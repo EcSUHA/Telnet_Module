@@ -175,13 +175,15 @@ static SCDEFn_t* SCDEFn;
  * --------------------------------------------------------------------------------------------------
  */
 ProvidedByModule_t Telnet_ProvidedByModule =   { // A-Z order
-  "Telnet"				// Type-Name of module -> should be same name as libfilename.so !
+  "TeLNET"				// Type-Name of module -> on Linux libfilename.so !
   ,6					// size of Type-Name
 
   ,NULL					// Add
   ,NULL					// Attribute
   ,Telnet_Define			// Define
   ,NULL					// Delete
+  ,Telnet_DirectRead			// DirectRead
+  ,Telnet_DirectWrite			// DirectWrite
   ,NULL					// Except
   ,NULL					// Get
   ,NULL					// IdleCb
@@ -196,10 +198,8 @@ ProvidedByModule_t Telnet_ProvidedByModule =   { // A-Z order
   ,NULL					// State
   ,NULL					// Sub
   ,Telnet_Undefine			// Undefine
-  ,Telnet_DirectRead			// DirectRead
-  ,Telnet_DirectWrite			// DirectWrite
- // ,NULL				// FnProvided
-  ,sizeof(Telnet_Definition_t)		// Size of modul specific definition structure (Common_Definition_t + X)
+  ,NULL					// Write
+  ,sizeof(Telnet_Definition_t)		// Modul specific Size (Common_Definition_t + X)
 };
 
 
