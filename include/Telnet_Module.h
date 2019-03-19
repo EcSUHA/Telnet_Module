@@ -1,11 +1,42 @@
-﻿// SCDE-Module Telnet
+﻿// SCDE-Module Telnet (cmd interface to the SCDE)
 
 #ifndef TELNET_MODULE_H
 #define TELNET_MODULE_H
 
+// -------------------------------------------------------------------------------------------------
 
-
+// this Module is made for the Smart-Connected-Device-Engine
 #include "SCDE_s.h"
+
+// this Module provides functions for other Modules:
+// -- no ---
+
+// this Module uses an 1st stage:
+// -- no ---
+
+// -------------------------------------------------------------------------------------------------
+
+// stores the Root Data of the Smart Connected Devices Engine - at/for this Module
+SCDERoot_t* SCDERoot_at_Telnet_M;
+
+// stores SCDEFn (Functions / callbacks) provided for operation - at/for this Module
+SCDEFn_t* SCDEFn_at_Telnet_M;
+
+// -------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 #define RECV_BUF_SIZE 2048
@@ -24,7 +55,7 @@
 //ProvidedByModule_t Telnet_Module;
 
 
-Module_t Module;
+//Module_t Module;
 
 
 
@@ -443,20 +474,35 @@ void Telnet_espconn_regist_sentcb(Telnet_Definition_t *conn, espconn_sent_callba
 
 
 
+// --------------------------------------------------------------------------------------------------
+
+
+
 /*
  *  Functions provided to SCDE by Module - for type operation (A-Z)
  */
+
+//
 strTextMultiple_t* Telnet_Define(Common_Definition_t *Common_Definition);//, const char *Definition);
 
-int Telnet_DirectRead(Common_Definition_t* Common_Definition);
+//
+int Telnet_Direct_Read(Common_Definition_t*  p_entry_definition);
 
-int Telnet_DirectWrite(Common_Definition_t* Common_Definition);
+//
+int Telnet_Direct_Write(Common_Definition_t*  p_entry_definition);
 
+//
 int Telnet_Initialize(SCDERoot_t* SCDERoot);
 
+//
 strTextMultiple_t* Telnet_Set(Common_Definition_t* Common_Definition, uint8_t *setArgs, size_t setArgsLen);
 
+//
 strTextMultiple_t* Telnet_Undefine(Common_Definition_t* Common_Definition);
+
+
+
+// --------------------------------------------------------------------------------------------------
 
 
 

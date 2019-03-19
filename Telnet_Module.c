@@ -156,15 +156,6 @@ LOG_TAG("Telnet_Module");
 // -------------------------------------------------------------------------------------------------
 
 
-// make data root locally available
-static SCDERoot_t* SCDERoot;
-
-// make locally available from data-root: the SCDEFn (Functions / callbacks) for operation
-static SCDEFn_t* SCDEFn;
-
-// --------------------------------------------------------------------------------------------------
-
-
 
 /**
  * --------------------------------------------------------------------------------------------------
@@ -182,8 +173,8 @@ ProvidedByModule_t Telnet_ProvidedByModule =   { // A-Z order
   ,NULL					// Attribute
   ,Telnet_Define			// Define
   ,NULL					// Delete
-  ,Telnet_DirectRead			// DirectRead
-  ,Telnet_DirectWrite			// DirectWrite
+  ,Telnet_Direct_Read			// Direct_Read
+  ,Telnet_Direct_Write			// Direct_Write
   ,NULL					// Except
   ,NULL					// Get
   ,NULL					// IdleCb
@@ -199,38 +190,12 @@ ProvidedByModule_t Telnet_ProvidedByModule =   { // A-Z order
   ,NULL					// Sub
   ,Telnet_Undefine			// Undefine
   ,NULL					// Write
+  ,NULL					// FnProvided
   ,sizeof(Telnet_Definition_t)		// Modul specific Size (Common_Definition_t + X)
 };
 
 
 
-/* --------------------------------------------------------------------------------------------------
- *  FName: Telnet_Initialize
- *  Desc: Initializion of SCDE Function Callbacks of an new loaded module
- *  Info: Stores Module-Information (Function Callbacks) to SCDE-Root
- *  Para: SCDERoot_t* SCDERootptr -> ptr to SCDE Data Root
- *  Rets: ? unused
- *--------------------------------------------------------------------------------------------------
- */
-int 
-Telnet_Initialize(SCDERoot_t* SCDERootptr)
-{
-
-  // make data root locally available
-  SCDERoot = SCDERootptr;
-
-  // make locally available from data-root: SCDEFn (Functions / callbacks) for faster operation
-  SCDEFn = SCDERootptr->SCDEFn;
-
-  SCDEFn->Log3Fn(Telnet_ProvidedByModule.typeName
-		  ,Telnet_ProvidedByModule.typeNameLen
-		  ,3
-		  ,"InitializeFn called. Type '%.*s' now useable.\n"
-		  ,Telnet_ProvidedByModule.typeNameLen
-		  ,Telnet_ProvidedByModule.typeName);
-
-  return 0;
-}
 
 
 
@@ -293,7 +258,6 @@ eventToString(telnet_event_type_t type)
 
 	case TELNET_EV_ZMP:
 		return "TELNET_EV_ZMP";
-
 	}
 
   return "Unknown type";
@@ -352,7 +316,7 @@ Telnet_LibtelnetEventHandler(telnet_t *thisTelnet,
 	case TELNET_EV_SEND:
 
 		# if SCDED_DBG >= 5
- 		 SCDEFn->HexDumpOutFn ("\nTelnet req to send:",
+ 		 SCDEFn_at_Telnet_M->HexDumpOutFn ("\nTelnet req to send:",
 			(char *) event->data.buffer,
 			event->data.size);
 		# endif
@@ -393,18 +357,19 @@ Telnet_LibtelnetEventHandler(telnet_t *thisTelnet,
 // to do: Line Buffering
 
 		# if SCDED_DBG >= 5
- 		 SCDEFn->HexDumpOutFn ("\nTelnet received:"
+ 		 SCDEFn_at_Telnet_M->HexDumpOutFn ("\nTelnet received:"
 			,(char *) event->data.buffer
 			,event->data.size);
 		# endif
 
 		// analyze, execute cmd and get retMsgMultiple from Fn
 /*use?		struct headRetMsgMultiple_s headRetMsgMultipleFromFn =
-			 SCDEFn->AnalyzeCommandFn((uint8_t *) event->data.buffer,
+			 SCDEFn_at_Telnet_M->AnalyzeCommandFn((uint8_t *) event->data.buffer,
 			(size_t) event->data.size);*/
 
+		// execute an received row
 		struct headRetMsgMultiple_s headRetMsgMultipleFromFn =
-			 SCDEFn->AnalyzeCommandChainFn((uint8_t *) event->data.buffer,
+			 SCDEFn_at_Telnet_M->AnalyzeCommandChainFn((uint8_t *) event->data.buffer,
 			(size_t) event->data.size);
 
 		// get the entries from retMsgMultiple till empty, if any
@@ -787,13 +752,10 @@ Telnet_SendToSendBuff(Telnet_DConnSlotData_t *conn
  */
 void
 Telnet_TransmitSendBuff(Telnet_DConnSlotData_t *conn) 
-
-  {
+{
 
   // do we have an allocated Send-Buffer -> there is something to send in the Send-Buffer !
-  if (conn->sendBuff) //(conn->sendBuffLen)
-
-	{
+  if (conn->sendBuff) {  //(conn->sendBuffLen)
 
 	# if SCDED_DBG >= 3
 	printf("|TX SendBuff, slot %d, to remote:%d.%d.%d.%d:%d from local port:%d, len=%d. mem:%d>",
@@ -809,7 +771,7 @@ Telnet_TransmitSendBuff(Telnet_DConnSlotData_t *conn)
 	# endif
 
 	# if SCDED_DBG >= 5
- 	 SCDEFn->HexDumpOutFn ("\nTX-SendBuff",
+ 	 SCDEFn_at_Telnet_M->HexDumpOutFn ("\nTX-SendBuff",
 		conn->sendBuff,
 		conn->sendBuffLen);
 	# endif
@@ -819,16 +781,13 @@ Telnet_TransmitSendBuff(Telnet_DConnSlotData_t *conn)
 		conn->sendBuffLen);
 
 	// show error on debug term...
- 	if (Result)
-
-		{
+ 	if (Result) {
 
 		# if SCDED_DBG >= 1
 		printf("\n|TX-Err:%d!>"
 			,Result);
 		# endif
-
-		}
+	}
 
 	// free Send-Buffer
 	free(conn->sendBuff);
@@ -846,17 +805,13 @@ Telnet_TransmitSendBuff(Telnet_DConnSlotData_t *conn)
 
 	}
 
-  else
-
-	{
+  else {
 
 	# if SCDED_DBG >= 3
 	printf("|no allocated SendBuff, no TX!>");
 	# endif
-
-	}
-
   }
+}
 
 
 
@@ -968,7 +923,7 @@ Telnet_RecvCb(void *arg,
   #endif
 
   # if SCDED_DBG >= 5
-  SCDEFn->HexDumpOutFn ("RX-HEX", recvdata, recvlen);
+  SCDEFn_at_Telnet_M->HexDumpOutFn ("RX-HEX", recvdata, recvlen);
   # endif
 
 // --------------------------------------------------------------------------------------------------
@@ -1210,8 +1165,8 @@ Telnet_ConnCb(void *arg)
 		,"--- Smart-Connected-Device-Engine, Telnet-Access, Welcome! ---\r\n"
 		 "Service provided by Type-Name: %.*s, Def-Name: %.*s\r\n\r\n"
 		 "Type <Help> for command overview.\r\n\r\n"
-		,(int) conn->conn->common.module->ProvidedByModule->typeNameLen
-		,conn->conn->common.module->ProvidedByModule->typeName
+		,(int) conn->conn->common.module->provided->typeNameLen
+		,conn->conn->common.module->provided->typeName
 		,(int) conn->conn->common.nameLen
 		,conn->conn->common.name);
 
@@ -1269,15 +1224,13 @@ Telnet_sent(Telnet_Definition_t *Telnet_Definition
  */
 void
 Telnet_disconnect(Telnet_Definition_t *Telnet_Definition)
-  {
-
+{
   // select for disconnecting (F_NEEDS_CLOSE)
   Telnet_Definition->Telnet_CtrlRegA |= F_NEEDS_CLOSE;
 
   // select for want writing (F_WANTS_WRITE), because the real close is done in the write select of code
   Telnet_Definition->common.Common_CtrlRegA |= F_WANTS_WRITE;
-
-  }
+}
 
 
 /* --------------------------------------------------------------------------------------------------
@@ -1289,8 +1242,7 @@ Telnet_disconnect(Telnet_Definition_t *Telnet_Definition)
  */
 int 
 Telnet_UndefineRaw(Telnet_Definition_t* Telnet_Definition)
-  {
-
+{
   // connection close
   close(Telnet_Definition->common.fd);
 
@@ -1301,7 +1253,7 @@ Telnet_UndefineRaw(Telnet_Definition_t* Telnet_Definition)
 
 
   // remove WebIF Definition
-  STAILQ_REMOVE(&SCDERoot->HeadCommon_Definitions
+  STAILQ_REMOVE(&SCDERoot_at_Telnet_M->HeadCommon_Definitions
 	,(Common_Definition_t*) Telnet_Definition
 	,Common_Definition_s
 	,entries);
@@ -1316,8 +1268,17 @@ Telnet_UndefineRaw(Telnet_Definition_t* Telnet_Definition)
   free(Telnet_Definition);
 
   return 0;
+}
 
-  }
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1332,8 +1293,7 @@ Telnet_UndefineRaw(Telnet_Definition_t* Telnet_Definition)
  */
 strTextMultiple_t* 
 Telnet_Define(Common_Definition_t *Common_Definition)//, const char *Definition)
-  {
-
+{
   // for Fn response msg
   strTextMultiple_t *retMsg = NULL;
 
@@ -1393,7 +1353,7 @@ Telnet_Define(Common_Definition_t *Common_Definition)//, const char *Definition)
 	// socked created or error?
 	if (listenfd < 0) {
 
-		SCDEFn->Log3Fn(Telnet_Definition->common.name
+		SCDEFn_at_Telnet_M->Log3Fn(Telnet_Definition->common.name
 				,Telnet_Definition->common.nameLen
 				,1
 				,"Telnet_Define ERROR: failed to create sock! retriing\n");
@@ -1410,7 +1370,7 @@ Telnet_Define(Common_Definition_t *Common_Definition)//, const char *Definition)
   ret = setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, (char *) &opt, sizeof(opt) );
   if (ret < 0 ) {
 
-	SCDEFn->Log3Fn(Telnet_Definition->common.name
+	SCDEFn_at_Telnet_M->Log3Fn(Telnet_Definition->common.name
 			,Telnet_Definition->common.nameLen
 			,1
 			,"Telnet_Define ERROR: 'setsockopt' failed! error:%d\n"
@@ -1425,7 +1385,7 @@ Telnet_Define(Common_Definition_t *Common_Definition)//, const char *Definition)
 
 	if (ret != 0) {
 
-		SCDEFn->Log3Fn(Telnet_Definition->common.name
+		SCDEFn_at_Telnet_M->Log3Fn(Telnet_Definition->common.name
 				,Telnet_Definition->common.nameLen
 				,1
 				,"Telnet_Define ERROR: 'bind' failed! retriing\n");
@@ -1461,7 +1421,7 @@ Telnet_Define(Common_Definition_t *Common_Definition)//, const char *Definition)
 
 		{
 
-		SCDEFn->Log3Fn(Telnet_Definition->common.name
+		SCDEFn_at_Telnet_M->Log3Fn(Telnet_Definition->common.name
 				,Telnet_Definition->common.nameLen
 				,1
 				,"Telnet_Define ERROR: 'listen' failed! retriing\n");
@@ -1488,42 +1448,47 @@ Telnet_Define(Common_Definition_t *Common_Definition)//, const char *Definition)
   Telnet_espconn_regist_connectcb(Telnet_Definition,
 	Telnet_ConnCb);
 
-  SCDEFn->Log3Fn(Telnet_Definition->common.name
+  SCDEFn_at_Telnet_M->Log3Fn(Telnet_Definition->common.name
 		  ,Telnet_Definition->common.nameLen
 		  ,1
 		  ,"Defined a Telnet at X.X.X.X:YYYY, FD is:%d\n"
 		  ,listenfd);
 
   return retMsg;
-
-  }
+}
 
 
 
 /* --------------------------------------------------------------------------------------------------
- *  FName: Telnet_DirectRead
- *  Desc: Called by the global select-loop when FD is in read-set
+ *  FName: Telnet_Direct_Read
+ *  Desc: Called from the global select-loop when FD is in read-set
  *  Info: 
- *  Para: Common_Definition* Common_Definition -> XXX_Definition of the FD owners definition
+ *  Para: Common_Definition_t* p_entry_definition -> the FD owners definition
  *  Rets: ? - unused
  * --------------------------------------------------------------------------------------------------
  */
 int 
-Telnet_DirectRead(Common_Definition_t* Common_Definition)
-  {
+Telnet_Direct_Read(Common_Definition_t* p_entry_definition)
+{
+  // make common ptr to modul specific ptr
+  Telnet_Definition_t* p_entry_telnet_definition = 
+	(Telnet_Definition_t*) p_entry_definition;
 
-  #if SCDEH_DBG >= 5
-  printf("\n|Telnet_DirectRead Entering..., Name:%.*s>"
-	,(int) Common_Definition->nameLen
-	,(char*)Common_Definition->name);
+// -------------------------------------------------------------------------------------------------
+
+  #if Telnet_Module_DBG >= 7
+  SCDEFn_at_Telnet_M->Log3Fn(p_entry_telnet_definition->common.name,
+	p_entry_telnet_definition->common.nameLen,
+	7,
+	"Direct Read Fn (module '%.*s'), entering.",
+	p_entry_telnet_definition->common.module->provided->typeNameLen,
+	p_entry_telnet_definition->common.module->provided->typeName);
   #endif
 
-  // make common ptr to modul specific ptr
-  Telnet_Definition_t *Telnet_Definition =
-	(Telnet_Definition_t*) Common_Definition;
+// ------------------------------------------------------------------------------------------------
 
-  // ptr to receive buffer
-  char *RecvBuf;
+  // ptr to receive-buffer
+  char* recv_buffer;
 
   int32_t len;
 
@@ -1539,85 +1504,74 @@ Telnet_DirectRead(Common_Definition_t* Common_Definition)
 
 // -------------------------------------------------------------------------------------------------
 
-  // Check Flag 'THIS_IS_SERVERSOCKET' in Telnet_CtrlRegA. This indicates a server-socket. 
+  // Check Flag 'THIS_IS_SERVERSOCKET' in Telnet_CtrlRegA. It indicates a server-socket. 
   // -> Manage a new connection.
-  if (Telnet_Definition->Telnet_CtrlRegA & F_THIS_IS_SERVERSOCKET) {
+  if (p_entry_telnet_definition->Telnet_CtrlRegA & F_THIS_IS_SERVERSOCKET) {
 
 // -------------------------------------------------------------------------------------------------
 
 	// check slot availiability, get a slot no. or RETURN, mark slot as 'in use'
-	uint32_t SlotCtrlRegBF = Telnet_Definition->Telnet_DInstanceCfg->SlotCtrlRegBF;
+	uint32_t SlotCtrlRegBF = 
+		p_entry_telnet_definition->Telnet_DInstanceCfg->SlotCtrlRegBF;
 
 	uint8_t NewSlotNo;
 
 	// MAX_SLOTS_PER_INSTANCE -> uint32_t BF used in code -> 32 64?
-	for (NewSlotNo = 0; NewSlotNo < 32; NewSlotNo++) {
+	for ( NewSlotNo = 0 ; NewSlotNo < 32 ; NewSlotNo++ ) {
 
-		if (!(SlotCtrlRegBF & (0b1 <<NewSlotNo) ))
+		if ( ! ( SlotCtrlRegBF & ( 0b1 << NewSlotNo ) ) )
 			break;
-		}
+	}
 
-	// Check for no slots free error
-	if (NewSlotNo >=32) {
+	// Check if we got a free slot? -> 'no slots free' error
+	if ( NewSlotNo >= 32 ) {
 
-		SCDEFn->Log3Fn(Telnet_Definition->common.name
-			,Telnet_Definition->common.nameLen
-			,1
-			,"Telnet_DirectRead Error no slots free...\n");
+		SCDEFn_at_Telnet_M->Log3Fn(p_entry_telnet_definition->common.name,
+			p_entry_telnet_definition->common.nameLen,
+			1,
+			"Telnet_Direct_Read Fn - Error, no slots free...");
 
 		// do not accept new connection
 		return 0;//??
-
-		}
+	}
 
 	// mark found slot as used in Slot-Control-Register-Bitfield
-	SlotCtrlRegBF |= (0b1 << NewSlotNo);
+	SlotCtrlRegBF |= ( 0b1 << NewSlotNo );
 
 	// store Slot-Control-Register-Bitfield
-	Telnet_Definition->Telnet_DInstanceCfg->SlotCtrlRegBF = SlotCtrlRegBF;
+	p_entry_telnet_definition->Telnet_DInstanceCfg->SlotCtrlRegBF = SlotCtrlRegBF;
 
 // --------------------------------------------------------------------------------------------------
-
-	#if SCDEH_DBG >= 5
-	printf("|accept a new conn>");
-	#endif
 
 	len = sizeof(struct sockaddr_in);
 
 	// get FD from new connection and store remote address
-	NewClientFD = accept(Telnet_Definition->common.fd
-		,(struct sockaddr *) &remote_addr
-		,(socklen_t *) &len);
+	NewClientFD = accept(p_entry_telnet_definition->common.fd,
+		(struct sockaddr *) &remote_addr, (socklen_t *) &len);
 
 	// check for error
-	if (NewClientFD < 0) {
+	if ( NewClientFD < 0 ) {
 
-		SCDEFn->Log3Fn(Telnet_Definition->common.name
-				,Telnet_Definition->common.nameLen
-				,1
-				,"Telnet_DirectRead Error! accept failed...\n");
+		SCDEFn_at_Telnet_M->Log3Fn(p_entry_telnet_definition->common.name,
+			p_entry_telnet_definition->common.nameLen,
+			1,
+			"Telnet_DirectRead Error! accept failed...\n");
 
 		// error, process next slot?
 		return 0;//??
-
-		}
+	}
 
 // --------------------------------------------------------------------------------------------------
 
 	// create a new Telnet Definition
-	Telnet_Definition_t* NewTelnet_Definition;
+	Telnet_Definition_t* p_new_entry_telnet_definition;
 
 	// alloc mem for modul specific definition structure (Common_Definition_t + X)
-	NewTelnet_Definition = 
-		(Telnet_Definition_t*) malloc(sizeof(Telnet_Definition_t));
+	p_new_entry_telnet_definition = 
+		(Telnet_Definition_t*) malloc (sizeof (Telnet_Definition_t));
 
 	// zero the struct
-	memset(NewTelnet_Definition, 0, sizeof (Telnet_Definition_t));
-
-	// store new Telnet Definition
-	STAILQ_INSERT_HEAD(&SCDERoot->HeadCommon_Definitions
-		,(Common_Definition_t*) NewTelnet_Definition
-		, entries);
+	memset (p_new_entry_telnet_definition, 0, sizeof (Telnet_Definition_t));
 
 // --------------------------------------------------------------------------------------------------
 				
@@ -1627,33 +1581,31 @@ Telnet_DirectRead(Common_Definition_t* Common_Definition)
  	int keepInterval = 5;	//5s
  	int keepCount = 3;	//retry times
 
- 	setsockopt(NewClientFD, SOL_SOCKET, SO_KEEPALIVE, (void *) &keepAlive, sizeof(keepAlive));
-  	setsockopt(NewClientFD, IPPROTO_TCP, TCP_KEEPIDLE, (void*) &keepIdle, sizeof(keepIdle));
-  	setsockopt(NewClientFD, IPPROTO_TCP, TCP_KEEPINTVL, (void *) &keepInterval, sizeof(keepInterval));
-  	setsockopt(NewClientFD, IPPROTO_TCP, TCP_KEEPCNT, (void *) &keepCount, sizeof(keepCount));
-
-//---
+ 	setsockopt (NewClientFD, SOL_SOCKET, SO_KEEPALIVE, (void *) &keepAlive, sizeof (keepAlive));
+  	setsockopt (NewClientFD, IPPROTO_TCP, TCP_KEEPIDLE, (void*) &keepIdle, sizeof (keepIdle));
+  	setsockopt (NewClientFD, IPPROTO_TCP, TCP_KEEPINTVL, (void *) &keepInterval, sizeof (keepInterval));
+  	setsockopt (NewClientFD, IPPROTO_TCP, TCP_KEEPCNT, (void *) &keepCount, sizeof (keepCount));
 			
  	// store clients FD to new WebIF Definition
- 	NewTelnet_Definition->common.fd = NewClientFD;
+ 	p_new_entry_telnet_definition->common.fd = NewClientFD;
 
 	// copy link to HTTPD-Instance-Configuration
-	NewTelnet_Definition->Telnet_DInstanceCfg
-		= Telnet_Definition->Telnet_DInstanceCfg;
+	p_new_entry_telnet_definition->Telnet_DInstanceCfg
+		= p_entry_telnet_definition->Telnet_DInstanceCfg;
 
 	// copy ptr to associated module (this module)
-	NewTelnet_Definition->common.module
-		= Telnet_Definition->common.module;
+	p_new_entry_telnet_definition->common.module
+		= p_entry_telnet_definition->common.module;
 
 	// store Slot-Number
-	NewTelnet_Definition->SlotNo = NewSlotNo;
+	p_new_entry_telnet_definition->SlotNo = NewSlotNo;
 
 	// clear Flag 'WANT_WRITE' in new WebIF Definition
- 	NewTelnet_Definition->common.Common_CtrlRegA
+ 	p_new_entry_telnet_definition->common.Common_CtrlRegA
 		&= ~F_WANTS_WRITE;
 
 	// clear Flag 'NEEDS_CLOSE' in new WebIF Definition
- 	NewTelnet_Definition->Telnet_CtrlRegA
+ 	p_new_entry_telnet_definition->Telnet_CtrlRegA
 		&= ~F_NEEDS_CLOSE;
 
 	// get info about new client (port, ip, ...)	
@@ -1663,14 +1615,14 @@ Telnet_DirectRead(Common_Definition_t* Common_Definition)
   	struct sockaddr_in *piname = (struct sockaddr_in *) &name;
 
  	 // store port + ip info from new client to new WebIF Definition
-//  	NewTelnet_Definition->port = piname->sin_port;
-//  	memcpy(&NewTelnet_Definition->ip
+//  	p_new_entry_telnet_definition->port = piname->sin_port;
+//  	memcpy(&p_new_entry_telnet_definition->ip
 //		, &piname->sin_addr.s_addr
-//		, sizeof(NewTelnet_Definition->ip));
+//		, sizeof(p_new_entry_telnet_definition->ip));
 
 
 	// using TCP, create struct
-	esp_tcp *tcp = (esp_tcp*) malloc (sizeof(esp_tcp));
+	esp_tcp* tcp = (esp_tcp*) malloc (sizeof(esp_tcp));
 
 	// using TCP, fill struct
 	tcp->remote_port = piname->sin_port;	// port
@@ -1679,166 +1631,219 @@ Telnet_DirectRead(Common_Definition_t* Common_Definition)
 		, sizeof(tcp->remote_ip));
 
 	// store TCP struct
-	NewTelnet_Definition->proto.tcp = tcp;
+	p_new_entry_telnet_definition->proto.tcp = tcp;
 
 	// give definition a new unique name
-	NewTelnet_Definition->common.nameLen = 
-		asprintf((char**)&NewTelnet_Definition->common.name
+	p_new_entry_telnet_definition->common.nameLen = 
+		asprintf((char**)&p_new_entry_telnet_definition->common.name
 		,"%.*s.%d.%d.%d.%d.%u"
-		,(int) Telnet_Definition->common.nameLen
-		,Telnet_Definition->common.name
-		,NewTelnet_Definition->proto.tcp->remote_ip[0]
-		,NewTelnet_Definition->proto.tcp->remote_ip[1]
-		,NewTelnet_Definition->proto.tcp->remote_ip[2]
-		,NewTelnet_Definition->proto.tcp->remote_ip[3]
-		,NewTelnet_Definition->proto.tcp->remote_port);
+		,(int) p_entry_telnet_definition->common.nameLen
+		,p_entry_telnet_definition->common.name
+		,p_new_entry_telnet_definition->proto.tcp->remote_ip[0]
+		,p_new_entry_telnet_definition->proto.tcp->remote_ip[1]
+		,p_new_entry_telnet_definition->proto.tcp->remote_ip[2]
+		,p_new_entry_telnet_definition->proto.tcp->remote_ip[3]
+		,p_new_entry_telnet_definition->proto.tcp->remote_port);
 
-  // assign an unique number
-  NewTelnet_Definition->common.nr = SCDERoot->DevCount++;
+	// assign an unique number
+	p_new_entry_telnet_definition->common.nr = SCDERoot_at_Telnet_M->device_count++;
 
-  // make this definition temporary
-	NewTelnet_Definition->common.defCtrlRegA |= F_TEMPORARY;
+	// mark this definition as a temporary definition
+	p_new_entry_telnet_definition->common.defCtrlRegA |= F_TEMPORARY;
 
-	// official log entry
-	SCDEFn->Log3Fn(NewTelnet_Definition->common.name
-		,NewTelnet_Definition->common.nameLen
-		,1
-		,"Created a new Definition for conn - Name:%.*s TypeName:%.*s Slot:%d FD:%d\n"
-		,NewTelnet_Definition->common.nameLen
-		,NewTelnet_Definition->common.name
-		,NewTelnet_Definition->common.module->ProvidedByModule->typeNameLen
-		,NewTelnet_Definition->common.module->ProvidedByModule->typeName
-		,NewTelnet_Definition->SlotNo
-		,NewTelnet_Definition->common.fd);
+	// store new Telnet Definition
+	STAILQ_INSERT_HEAD(&SCDERoot_at_Telnet_M->HeadCommon_Definitions
+		,(Common_Definition_t*) p_new_entry_telnet_definition
+		, entries);
+
+	#if Telnet_Module_DBG >= 7
+	SCDEFn_at_Telnet_M->Log3Fn(p_entry_telnet_definition->common.name,
+		p_entry_telnet_definition->common.nameLen,
+		7,
+		"Direct Read Fn (module '%.*s'), F_THIS_IS_SERVERSOCKET set for "
+		"this conn. Accepting a new conn. Using slot '%d', FD '%d'. "
+		"Creating a 'definition' with F_TEMPORARY set. Exec Conn_Cb Fn",
+		p_entry_telnet_definition->common.module->provided->typeNameLen,
+		p_entry_telnet_definition->common.module->provided->typeName,
+		p_new_entry_telnet_definition->SlotNo,
+		p_new_entry_telnet_definition->common.fd);
+	#endif
 
  	// execute WebIF Connect Callback to init 			
-	Telnet_ConnCb(NewTelnet_Definition);
-
-	}
+	Telnet_ConnCb(p_new_entry_telnet_definition);
+  }
 
 // --------------------------------------------------------------------------------------------------
 
-  // Flag 'THIS_IS_SERVERSOCKET' cleared. This indicates that this is not the server-socket.
-  // -> Manage old connection.
+  // Flag 'THIS_IS_SERVERSOCKET' cleared. This indicates that this is NOT the server-socket.
+  // -> Manage an old connection
   else {
 
- #if SCDEH_DBG >= 5
- printf("recv>");
- #endif
+	#if SCDEH_DBG >= 5
+	printf("recv>");
+	#endif
+	
+	// malloc our receive buffer
+	recv_buffer = (char*) malloc(RECV_BUF_SIZE);
 
-	RecvBuf = (char*) malloc(RECV_BUF_SIZE);
-
-	// error - got no buffer !
-	if (RecvBuf == NULL) {
+	// got no buffer ? Close / Cleanup connection
+	if ( recv_buffer == NULL ) {
 
 		printf("platHttpServerTask: memory exhausted!\n");
 
-		Telnet_DisconCb(Telnet_Definition);
+		Telnet_DisconCb(p_entry_telnet_definition);
 
-		close(Telnet_Definition->common.fd);
+		close(p_entry_telnet_definition->common.fd);
 
-		Telnet_Definition->common.fd = -1;
+		p_entry_telnet_definition->common.fd = -1;
+	}
 
-		}
+	// receive the expected data
+	int32_t recv_len = recv(p_entry_telnet_definition->common.fd,
+		recv_buffer, RECV_BUF_SIZE, 0);
 
-	// receive the data
-	int32_t ret = recv(Telnet_Definition->common.fd
-		,RecvBuf
-		,RECV_BUF_SIZE
-		,0);
-
-	// process, if received data
-	if (ret > 0) {
+	// process the data, if any
+	if ( recv_len > 0 ) {
 
 		// execute Received Callback
-		Telnet_RecvCb(Telnet_Definition, RecvBuf, ret);
-
-		}
+		Telnet_RecvCb(p_entry_telnet_definition, recv_buffer, recv_len);
+	}
 
 	// or has remote closed the connection ?
-	else if (ret == 0) {
+	else if ( recv_len == 0 ) {
 
 		// execute Disconnect Callback
-		Telnet_DisconCb(Telnet_Definition);
+		Telnet_DisconCb(p_entry_telnet_definition);
 
-		// undefinde this Telnet_Definition
-		Telnet_UndefineRaw(Telnet_Definition);
-
-		}
-
+		// undefinde this p_entry_telnet_definition
+		Telnet_UndefineRaw(p_entry_telnet_definition);
+	}
 
 	// else we got an error ...
 	else 	{
 
 		// execute Error Callback
-		Telnet_ReconCb(Telnet_Definition, ret);
+		Telnet_ReconCb(p_entry_telnet_definition, recv_buffer);
 
-		// undefinde this Telnet_Definition
-		Telnet_UndefineRaw(Telnet_Definition);
-
-		}
-
+		// undefinde this p_entry_telnet_definition
+		Telnet_UndefineRaw(p_entry_telnet_definition);
 	}
 
-  // unused
-  return 0;
-
+  	// free our receive buffer
+  	free(recv_buffer);
   }
 
+  return 0;
+}
 
 
 
 /* --------------------------------------------------------------------------------------------------
- *  FName: Telnet_DirectWrite
- *  Desc: Called by the global select-loop when fd is in write-set 
- *  Info: 
+ *  FName: Direct_Write
+ *  Desc: Called from the global select-loop when fd is in write-set 
+ *  Info: But ONLY if Flag 'Want_Write' in Common_CtrlRegA is set !!!
  *  Para: 
  *  Rets: 
  * --------------------------------------------------------------------------------------------------
  */
 int 
-Telnet_DirectWrite(Common_Definition_t* Common_Definition)
-  {
+Telnet_Direct_Write(Common_Definition_t* p_entry_definition)
+{
+  // make common ptr to modul specific ptr
+  Telnet_Definition_t* p_entry_telnet_definition = 
+	(Telnet_Definition_t*) p_entry_definition;
 
-  #if SCDEH_DBG >= 5
-  printf("\n|Telnet_DirectWrite Entering..., Name:%.*s>"
-	,(int) Common_Definition->nameLen
-	,(char*)Common_Definition->name);
+// -------------------------------------------------------------------------------------------------
+
+  #if Telnet_Module_DBG >= 7
+  SCDEFn_at_Telnet_M->Log3Fn(p_entry_telnet_definition->common.name,
+	p_entry_telnet_definition->common.nameLen,
+	7,
+	"Direct Write Fn (module '%.*s'), entering.",
+	p_entry_telnet_definition->common.module->provided->typeNameLen,
+	p_entry_telnet_definition->common.module->provided->typeName);
   #endif
 
-  // make common ptr to modul specific ptr
-  Telnet_Definition_t* Telnet_Definition = (Telnet_Definition_t*) Common_Definition;
+// ------------------------------------------------------------------------------------------------
 
   // clear Flag F_WANT_WRITE, will be set again when more data is send
-//  Telnet_Definition->common.Common_CtrlRegA &= ~F_WANTS_WRITE;	//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! in mainfn
+//  p_entry_telnet_definition->common.Common_CtrlRegA &= ~F_WANTS_WRITE;	//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! in mainfn
 
 // --------------------------------------------------------------------------------------------------
 
   // execute disconnection (indicated by NEEDS_CLOSE flag) or send more data ...
-  if (Telnet_Definition->Telnet_CtrlRegA & F_NEEDS_CLOSE) {
+  if ( p_entry_telnet_definition->Telnet_CtrlRegA & F_NEEDS_CLOSE ) {
+
+	#if TeLNET_Module_DBG >= 8
+  	SCDEFn_at_WebIf_M->Log3Fn(p_entry_webif_definition->common.name,
+		p_entry_webif_definition->common.nameLen,
+		8,
+		"Direct Write Fn (module '%.*s'), F_NEEDS_CLOSE set for "
+		"this conn. Exec Disconn_Cb Fn and Undefine_Raw Fn.",
+		p_entry_webif_definition->common.module->provided->typeNameLen,
+		p_entry_webif_definition->common.module->provided->typeName);
+ 	 #endif
 
 	// execute Disconnect Callback
-	Telnet_DisconCb(Telnet_Definition);
+	Telnet_DisconCb(p_entry_telnet_definition);
 
 	// undefinde this Telnet_Definition
-	Telnet_UndefineRaw(Telnet_Definition);
+	Telnet_UndefineRaw(p_entry_telnet_definition);
 
-	}
+	// definition gone here ...
+  }
 
 // --------------------------------------------------------------------------------------------------
 
-  // send more data ... by executing SendCb ...
+  // chance to send more data by SendCb ...
   else	{
 
-	// execute Sent Callback
-	Telnet_SentCb(Telnet_Definition);
+	#if TeLNET_Module_DBG >= 8
+  	SCDEFn_at_WebIf_M->Log3Fn(p_entry_webif_definition->common.name,
+		p_entry_webif_definition->common.nameLen,
+		8,
+		"Direct Write Fn (module '%.*s'), this conn is ready to write, "
+		"exec Send_Cb Fn. "
+		p_entry_webif_definition->common.module->provided->typeNameLen,
+		p_entry_webif_definition->common.module->provided->typeName);
+ 	 #endif
 
-	}
-
+	// execute Send_Cb Callback
+	Telnet_SentCb(p_entry_telnet_definition);
+  }
 
   return 0;
+}
 
-  }
+
+
+/* --------------------------------------------------------------------------------------------------
+ *  FName: Telnet_Initialize
+ *  Desc: Initializion of SCDE Function Callbacks of an new loaded module
+ *  Info: Stores Module-Information (Function Callbacks) to SCDE-Root
+ *  Para: SCDERoot_t* SCDERootptr -> ptr to SCDE Data Root
+ *  Rets: ? unused
+
+ *--------------------------------------------------------------------------------------------------
+ */
+int 
+Telnet_Initialize(SCDERoot_t* SCDERootptr)
+{
+  // make data root locally available
+  SCDERoot_at_Telnet_M = SCDERootptr;
+
+  // make locally available from data-root: SCDEFn (Functions / callbacks) for faster operation
+  SCDEFn_at_Telnet_M = SCDERootptr->SCDEFn;
+
+  SCDEFn_at_Telnet_M->Log3Fn(Telnet_ProvidedByModule.typeName
+		  ,Telnet_ProvidedByModule.typeNameLen
+		  ,3
+		  ,"InitializeFn called. Type '%.*s' now useable.\n"
+		  ,Telnet_ProvidedByModule.typeNameLen
+		  ,Telnet_ProvidedByModule.typeName);
+
+  return 0;
+}
 
 
 
@@ -1950,12 +1955,9 @@ Telnet_Undefine(Common_Definition_t* Common_Definition)
 void
 Telnet_espconn_regist_recvcb(Telnet_Definition_t *conn
 			, espconn_recv_callback recv_callback)
-  {
-
-  conn->recv_callback 
-	= recv_callback;
-
-  }
+{
+  conn->recv_callback = recv_callback;
+}
 
 
 /*
@@ -1969,13 +1971,9 @@ Telnet_espconn_regist_recvcb(Telnet_Definition_t *conn
 void
 Telnet_espconn_regist_connectcb(Telnet_Definition_t *conn
 		, espconn_connect_callback connect_callback)
-
-  {
-
- conn->proto.tcp->connect_callback
-	= connect_callback;
-
-  }
+{
+ conn->proto.tcp->connect_callback = connect_callback;
+}
 
 
 
@@ -1990,12 +1988,9 @@ Telnet_espconn_regist_connectcb(Telnet_Definition_t *conn
 void
 Telnet_espconn_regist_reconcb(Telnet_Definition_t *conn
 		, espconn_reconnect_callback reconnect_callback)
-  {
-
-  conn->proto.tcp->reconnect_callback
-	= reconnect_callback;
-
-  }
+{
+  conn->proto.tcp->reconnect_callback = reconnect_callback;
+}
 
 
 
@@ -2010,12 +2005,9 @@ Telnet_espconn_regist_reconcb(Telnet_Definition_t *conn
 void
 Telnet_espconn_regist_disconcb(Telnet_Definition_t *conn
 		, espconn_connect_callback disconnect_callback)
-  {
-
- conn->proto.tcp->disconnect_callback
-	= disconnect_callback;
-
-  }
+{
+ conn->proto.tcp->disconnect_callback = disconnect_callback;
+}
 
 
 
@@ -2030,28 +2022,9 @@ Telnet_espconn_regist_disconcb(Telnet_Definition_t *conn
 void
 Telnet_espconn_regist_sentcb(Telnet_Definition_t *conn
 		, espconn_sent_callback send_callback)
-  {
-
-  conn->send_callback
-	= send_callback;
-
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+{
+  conn->send_callback = send_callback;
+}
 
 
 
