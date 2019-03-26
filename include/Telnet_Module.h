@@ -183,13 +183,15 @@ typedef struct Telnet_DInstanceCfg_s
 
 
 /* 
- * Telnet_Definition stores values for operation valid only for the defined instance of an
- * loaded module. Values are initialized by HCTRLD an the loaded module itself.
+ * Entry Telnet Definition (struct) stores values for operation valid only for the defined instance of an
+ * loaded module. Values are initialized by SCDE an the loaded module itself.
  */
-typedef struct Telnet_Definition_s
-  {
-  Common_Definition_t common;		// ... the common part of the definition
+typedef struct Entry_Telnet_Definition_s {
+
+  Entry_Definition_t common;		// ... the common part of the definition
+
 //---
+
   enum espconn_type type;		// type of the espconn (TCP, UDP)
   enum espconn_state state;		// current state of the espconn
   union
@@ -200,12 +202,17 @@ typedef struct Telnet_Definition_s
     
   espconn_recv_callback recv_callback;	// A callback function for event: receive-data
   espconn_sent_callback send_callback;	// a callback function for event: send-data
+
   uint8_t link_cnt;
-  void *reverse;			// the reverse link to application-conn-slot-data
+
+  void* reverse;			// the reverse link to application-conn-slot-data
   int Telnet_CtrlRegA;			// Telnet Control-Reg-A (enum Telnet_CtrlRegA from WEBIF.h)
+
   Telnet_DInstanceCfg_t* Telnet_DInstanceCfg;	// link to configuration of this HTTPD-Instance
-  uint8_t SlotNo;			// slot number in this instance
-  } Telnet_Definition_t;
+
+  uint8_t slot_no;			// slot number in this instance
+
+} Entry_Telnet_Definition_t;
 
 
 
@@ -213,32 +220,27 @@ typedef struct Telnet_Definition_s
  * Definition typedef stores values for operation valid only for the defined instance of an
  * loaded module. Values are initialized by HCTRLD an the loaded module itself.
  */
-typedef struct Telnet_DConnSlotData_s
-  {
+typedef struct Telnet_DConnSlotData_s {
 
-  Telnet_Definition_t *conn;	// Link to lower level connection management
+  Entry_Telnet_Definition_t *conn;	// Link to lower level connection management
 
 //- V V V V V V V V V V V V V V V V V V // TX-Helper
 
-  char *sendBuff;			// Pointer to current allocated send buffer w. size [MAX_SB_LEN] (NULL=NO Send-Buffer)
-  int sendBuffLen; //SendBuffWritePos	// Send buffer, current write position (offset)
-  char *TrailingBuff;			// Pointer to a Trailing-Buffer (in case of an Send-Buffer overflow). Its prio for next transmission!
-  int TrailingBuffLen;			// Trailing-Buffer Length of (allocated) data, if any
+  char* send_buffer;//uint8_t*		// Pointer to current allocated send buffer w. size [MAX_SB_LEN] (NULL=NO Send-Buffer)
+  int send_buffer_write_pos; //uint16_t	// Send buffer, current write position (offset), !> 0 = its allocated!
+  char* trailing_buffer;//uint8_t*	// An 'trailing_buffer' in case of 'send_buffer' overflow. Its prio for next transmission!
+  int trailing_buffer_len; //uint16_t	// The 'trailing_buffer' length of (allocated & stored) data, !> 0 = its allocated!
+
 
 //- V V V V V V V V V V V V V V V V V V // Libtelnet
 
-  telnet_t *tnHandle;			// the clients Libtelnet tnHandle
+  telnet_t* tnHandle;			// the clients Libtelnet tnHandle
 
 //- V V V V V V V V V V V V V V V V V V // Helper
 
 
 //  HTTPDConnSlotPrivData *priv;		// Opaque pointer to data for internal httpd housekeeping (currently unused)
 
-//- V V V V V V V V V V V V V V V V V V // Procedure Callback Data
-
- // PCallback cgi;			// Assigned Procedure Callback for Processing
-  const void *PCArg;			// Argument for Procedure-Callback-Processing
-  void *PCData;				// Data for PC Procedure-Callback-Operations (counting...)
 
 //- V V V V V V V V V V V V V V V V V V // General Connection Control
 
@@ -252,90 +254,16 @@ typedef struct Telnet_DConnSlotData_s
 
 //- union 32Bit connspecific possible 
 
-  uint8_t SlotNo;			// helper to show slot number
+  uint8_t slot_no;			// helper to show slot number
   unsigned int SlotCgiState : 4;	// enum SlotCgiState
   unsigned int SlotParserState : 4;	// enum SlotParserState
   uint16_t LP10HzCounter;		// LongPoll 100ms/ 10Hz Counter (0.1-6553.6 Sec) for this conn
 
 //-
 
-//union
-//	{ routine verschieben!
-//	RPCCallback cgi; //soll rpc //alt:cgiSendCallback cgi;	// Assigned RPC Processing Callback
-//	HdrFldProcCb HdrFldFnCb;// Header Field processing Function Callback
-// int32_t HdrFldId;
-
-
-//tempörär. Idee fehlt
-// union je nach prozesschritt?
-char *HdrFldNameBuff;	// Pointer to Header Field Name Buffer
-int HdrFldNameLen;	// current HdrFldNameBuff length
-char *HdrFldValueBuff;	// Pointer to Header Field Value Buffer
-int HdrFldValueLen;	// current HdrFldValueBuff length
-
-//	};
-
-
-
-
-//- V V V V V V V V V V V V V V V V V V // SCD-Engine STAGE 1 processing -> parsing HTTP
-
-  uint32_t parser_nread;          	// # bytes read in various scenarios
-  uint64_t parser_content_length;	// Content-Length of Body from Headerfield ; -1 = not specified ; (counts down while parsed?)
-
-//-
-
-  unsigned int parser_type : 2;         // Parser type cfg  AND result after parse (enum http_parser_type from httpD.h)
-  unsigned int parser_flags : 8;        // Extracted information Flags F_* (enum flags from httpD.h)
-					// BIT 0 = F_CHUNKED
-					// BIT 1 = F_CONNECTION_KEEP_ALIVE
-					// BIT 2 = F_CONNECTION_CLOSE
-					// BIT 3 = F_CONNECTION_UPGRADE
-					// BIT 4 = F_TRAILING
-					// BIT 5 = F_UPGRADE
-					// BIT 6 = F_SKIPBODY
-					// BIT 7 = F_CONTENTLENGTH -> Content Length is set
-  unsigned int parser_state : 7;        // State of parser finite state machine (enum state from http_parser.c)
-  unsigned int parser_header_state : 7; // State of parser_header finite state machine (enum header_state from http_parser.c)
-  unsigned int parser_index : 7;        // index into current matcher
-  unsigned int parser_lenient_http_headers : 1;
-
-//-
-
-  uint16_t parser_http_major;		// FROM RESPONSE ONLY - extracted major version code (0-999 valid)
-  uint16_t parser_http_minor;		// FROM RESPONSE ONLY - extracted minor version code (0-999 valid)
-
-//-	
-
-  uint16_t parser_status_code;		// FROM RESPONSE ONLY - extracted status code (0-999 valid)		// unsigned int parser_status_code : 16;
-  unsigned int parser_method : 8;	// FROM REQUEST ONLY - extracted method (enum http_method from httpD.h)
-  unsigned int parser_http_errno : 7;	// internal error number in various operations
-  unsigned int parser_upgrade : 1;	// FROM REQUEST ONLY - upgrade header was present. Check when http_parser_execute() returns
-
-//- Extracted values in case of an request ...
-
-  unsigned int parser_scheme : 4;	// FROM REQUEST ONLY - scheme extracted by uri-parsing (AvailSchemes[] from ps.h)
-  unsigned int parser_mime : 4;		// FROM REQUEST ONLY - mime extracted by uri-parsing (AvailContentTypes[] from ps.h)
-  unsigned int freereserved1 : 8;	// 
-  int16_t ActiveDirID;			// FROM REQUEST ONLY - Active Directory ID (ADID) extracted by uri-parsing (0-32767 valid,-1,-2,-3 indicate special cases)
-
-//-
-
-  STAILQ_HEAD (stailhead, HeaderFieldInfo_s) head; // REQUEST & RESPONSE - Selected Header-Fields extracted & cached (AvailHdrFlds[])
-
-//-
-
-  char *url;				// FROM REQUEST ONLY - Ptr to allocated memory filled with PATH extracted from URI
-  char *AltFSFile;			// FROM REQUEST ONLY - (NULL = Filename from Path!) else Ptr. to alternative filename in FS
-  char *DestUrl;//MatchedUrl		// FROM REQUEST ONLY - Ptr to BuildInURL that matches (Active URL with Tokens for reconstruction)
-  char *getArgs;//Query			// FROM REQUEST ONLY - Ptr to allocated memory filled with QUERY (GETARGS) extracted from URI, if any
-  char *hostName;			// FROM REQUEST ONLY - content of host name field
-
-//-
-
-  char *postBuff; //BodyData		// REQUEST & RESPONSE - Pointer to BdyData Buffer
-  int postLen;	//BodyLen		// REQUEST & RESPONSE - length of stored body data
-//int postPos;	//BodyPos benötigt?	// counter for post position (contains whole post data len, not only buffer!)
+  // adds telnet data (till new line / line feed)
+  char* p_telnet_rcv_buff;		// current telnet received buffer ... adds during parsing
+  int telnet_rcv_len;			// current telnet received buffer length ... during parsing
 
   } Telnet_DConnSlotData_t;
 
@@ -458,19 +386,19 @@ void Telnet_ConnCb(void *arg);
 int Telnet_DirectRead(Common_Definition_t* Def);
 int Telnet_DirectWrite(Common_Definition_t* Def);
 int Telnet_Initialize(SCDERoot_t* SCDERoot);
-char* Telnet_Define(Telnet_Definition_t *Telnet_Definition, const char *Definition);
+char* Telnet_Define(Entry_Telnet_Definition_t *Telnet_Definition, const char *Definition);
 char* Telnet_Set(Common_Definition_t* Common_Definition, char *args);
 char* Telnet_Undefine(Common_Definition_t* Common_Definition);
 */
 
 // platform additional ...
-int Telnet_sent(Telnet_Definition_t *Telnet_Definition, uint8_t *Buff, uint Len);
-void Telnet_disconnect(Telnet_Definition_t *Telnet_Definition);
-void Telnet_espconn_regist_recvcb(Telnet_Definition_t *conn, espconn_recv_callback RecvCb);
-void Telnet_espconn_regist_connectcb(Telnet_Definition_t *conn, espconn_connect_callback connectCb);
-void Telnet_espconn_regist_reconcb(Telnet_Definition_t *conn, espconn_reconnect_callback ReconCb);
-void Telnet_espconn_regist_disconcb(Telnet_Definition_t *conn, espconn_connect_callback DisconCb);
-void Telnet_espconn_regist_sentcb(Telnet_Definition_t *conn, espconn_sent_callback SentCb);
+int Telnet_sent(Entry_Telnet_Definition_t *Telnet_Definition, uint8_t *Buff, uint Len);
+void Telnet_disconnect(Entry_Telnet_Definition_t *Telnet_Definition);
+void Telnet_espconn_regist_recvcb(Entry_Telnet_Definition_t *conn, espconn_recv_callback RecvCb);
+void Telnet_espconn_regist_connectcb(Entry_Telnet_Definition_t *conn, espconn_connect_callback connectCb);
+void Telnet_espconn_regist_reconcb(Entry_Telnet_Definition_t *conn, espconn_reconnect_callback ReconCb);
+void Telnet_espconn_regist_disconcb(Entry_Telnet_Definition_t *conn, espconn_connect_callback DisconCb);
+void Telnet_espconn_regist_sentcb(Entry_Telnet_Definition_t *conn, espconn_sent_callback SentCb);
 
 
 
@@ -509,9 +437,9 @@ strTextMultiple_t* Telnet_Undefine(Common_Definition_t* Common_Definition);
 /*
  *  telnet
  */
-int Telnet_SendToSendBuff(Telnet_DConnSlotData_t *conn, const char *data, int len);
+int Telnet_Send_To_Send_Buff(Telnet_DConnSlotData_t *conn, const char *data, int len);
 void Telnet_TransmitSendBuff(Telnet_DConnSlotData_t *conn); 
-
+void Telnet_RespToOpenConn(Telnet_DConnSlotData_t* conn);
 
 
 /*

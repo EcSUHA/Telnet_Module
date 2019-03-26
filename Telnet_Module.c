@@ -132,8 +132,8 @@ LOG_TAG("Telnet_Module");
 // -------------------------------------------------------------------------------------------------
 
 // ammount of debug information 0 = off 5 max?
-#ifndef SCDED_DBG
-#define SCDED_DBG 0
+#ifndef TELNETD_DBG
+#define TELNETD_DBG 9
 #endif
 
 // ammount of debug information 0 = off 5 max?
@@ -191,7 +191,7 @@ ProvidedByModule_t Telnet_ProvidedByModule =   { // A-Z order
   ,Telnet_Undefine			// Undefine
   ,NULL					// Write
   ,NULL					// FnProvided
-  ,sizeof(Telnet_Definition_t)		// Modul specific Size (Common_Definition_t + X)
+  ,sizeof(Entry_Telnet_Definition_t)	// Modul specific Size (Common_Definition_t + X)
 };
 
 
@@ -210,9 +210,7 @@ ProvidedByModule_t Telnet_ProvidedByModule =   { // A-Z order
 static char*
 eventToString(telnet_event_type_t type)
 {
-  switch (type)
-
-	{
+  switch (type) {
 
 	case TELNET_EV_COMPRESS:
 		return "TELNET_EV_COMPRESS";
@@ -258,7 +256,7 @@ eventToString(telnet_event_type_t type)
 
 	case TELNET_EV_ZMP:
 		return "TELNET_EV_ZMP";
-	}
+  }
 
   return "Unknown type";
 }
@@ -283,18 +281,16 @@ Telnet_LibtelnetEventHandler(telnet_t *thisTelnet,
 
   int rc;
 
-  # if SCDED_DBG >= 3
+  # if TELNETD_DBG >= 3
   printf("|telnet event: %s>", eventToString(event->type));
   #endif
 
 
   LOGD("telnet event: %s", eventToString(event->type));
 
-  Telnet_DConnSlotData_t *conn = (Telnet_DConnSlotData_t *) userData;
+  Telnet_DConnSlotData_t* conn = (Telnet_DConnSlotData_t*) userData;
 
-  switch (event->type)
-
-	{
+  switch (event->type) {
 
 // -----------------------------------------------------------------------
 
@@ -315,14 +311,14 @@ Telnet_LibtelnetEventHandler(telnet_t *thisTelnet,
 
 	case TELNET_EV_SEND:
 
-		# if SCDED_DBG >= 5
+		# if TELNETD_DBG >= 5
  		 SCDEFn_at_Telnet_M->HexDumpOutFn ("\nTelnet req to send:",
 			(char *) event->data.buffer,
 			event->data.size);
 		# endif
 
 		// transfer the data from libtelnet to Send-Buffer 
-		rc = Telnet_SendToSendBuff(conn
+		rc = Telnet_Send_To_Send_Buff(conn
 			,event->data.buffer
 			,event->data.size);
 
@@ -353,14 +349,86 @@ Telnet_LibtelnetEventHandler(telnet_t *thisTelnet,
 
 	case TELNET_EV_DATA:
 {
-
-// to do: Line Buffering
-
-		# if SCDED_DBG >= 5
+		# if TELNETD_DBG >= 5
  		 SCDEFn_at_Telnet_M->HexDumpOutFn ("\nTelnet received:"
 			,(char *) event->data.buffer
 			,event->data.size);
 		# endif
+
+
+/*
+		// check header field value for max allowed data length
+		if (p_conn->p_hdr_fld_value_buff == NULL) {
+
+			if ( length > MXTELNETLEN ) return 1; // error
+		}
+
+		else {
+
+			if ( strlen (p_conn->p_hdr_fld_value_buff) + length > MXTELNETLEN ) return 1; // error
+		}
+
+		// store header field data
+		p_conn->p_hdr_fld_value_buff = HTTPDStoreAddData(p_conn->p_hdr_fld_value_buff, (const uint8_t*) p_at, length);
+
+
+
+
+
+
+
+
+
+
+//  0x0a (ASCII newline)
+//  0x0d (ASCII carriage return)
+//  CRLF (0x0d0a)
+
+
+while (*search != '\0') {
+    // Seach for a newline
+
+    if (*search == '\n') {
+        printf("\nnewline Found\n");
+        search++;
+    }
+
+    // Search for a CR or a CRLF 
+    if(*search == '\r') {
+        // OK, we found a CR, is it followed by a LF?
+        if(*(search + 1) == '\n') {
+            // Yes, it is, thus, it is a CRLF
+            printf("\nCRLF Found\n");
+            search += 2; // Note the 2! CRLF is 2 characters!
+        }
+        else {
+            // No, just a lonely CR, forever alone.
+            printf("\nCarriage return found\n");
+            search++;
+        }
+    }
+}
+
+*/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 		// analyze, execute cmd and get retMsgMultiple from Fn
 /*use?		struct headRetMsgMultiple_s headRetMsgMultipleFromFn =
@@ -376,8 +444,18 @@ Telnet_LibtelnetEventHandler(telnet_t *thisTelnet,
 		while (!STAILQ_EMPTY(&headRetMsgMultipleFromFn)) {
 
 			// for the retMsg elements
-			strTextMultiple_t *retMsg =
+			strTextMultiple_t* retMsg =
 				STAILQ_FIRST(&headRetMsgMultipleFromFn);
+
+
+
+	#if TELNETD_DBG >= 8
+  	printf("Got retMsg element from acch '%.*s'",
+		retMsg->strTextLen,
+		retMsg->strText);
+ 	 #endif
+
+
 
 			// contains a msg?
 			if (retMsg->strTextLen) {
@@ -630,187 +708,300 @@ Telnet_LibtelnetEventHandler(telnet_t *thisTelnet,
 
 
 
+/* ------------------------------------------------------------------------------------------------
+ *  @brief WebIF Respond to open connection
+ *         Main element of SCDE. Responses to slots open connection, calls the processing callback
+ *         procedure and holds or closes the connection, if finished
+ *
+ *  @param WebIf_HTTPDConnSlotData_t *conn : provide connection slot data
+ *  @return -/-
+ * ------------------------------------------------------------------------------------------------
+ */
+void
+Telnet_RespToOpenConn(Telnet_DConnSlotData_t* conn)
+{
+  // Reset inactivity timer - because we had an callback ...
+  conn->InactivityTimer = 0;
+
+  // Clear / init Information Flags F_* (enum RespFlags from httpD.h) for response processing
+//  uint32_t ConnRespFlags = 0;
+
+// -------------------------------------------------------------------------------------------------
+
+  int trailing_buffer_len = conn->trailing_buffer_len;
+
+  // First: add data from 'trailing_buffer' to 'send_buffer' - if possible ..
+  if ( ( trailing_buffer_len ) &&	// is there an 'trailing_buffer'?
+	( conn->send_buffer_write_pos < MAX_SENDBUFF_LEN ) ) { // 'send_buffer' not full?
+
+	// bytes we will move from 'trailing_buffer' to 'send_buffer'
+	int copy_to_sb_len;
+	int send_buffer_free = MAX_SENDBUFF_LEN - conn->send_buffer_write_pos;
+
+	// we have already an allocated 'send_buffer' of size MAX_SENDBUFF_LEN ?
+	if (conn->send_buffer_write_pos) {
+
+		// calculate 'copy_to_sb_len'
+		if ( send_buffer_free > trailing_buffer_len) copy_to_sb_len = trailing_buffer_len;
+		else copy_to_sb_len = send_buffer_free;
+
+		# if SCDED_DBG >= 3
+		printf("|RTOC adding %d bytes from trailing_buffer to existing send_buffer>",
+			copy_to_sb_len);
+		#endif
+
+		// copy the data from 'trailing_buffer' to 'send_buffer', and set 'send_buffer_write_pos'
+		memcpy (conn->send_buffer + conn->send_buffer_write_pos, conn->trailing_buffer, copy_to_sb_len);
+		conn->send_buffer_write_pos += copy_to_sb_len;
+	}
+
+	// currently no allocated send_buffer. Allocate  
+	else {
+		// alloc new 'send_buffer'
+		conn->send_buffer = (char*) malloc(MAX_SENDBUFF_LEN);
+
+		// calculate  'copy_to_sb_len'
+		if ( MAX_SENDBUFF_LEN > trailing_buffer_len) copy_to_sb_len = trailing_buffer_len;
+		else copy_to_sb_len = MAX_SENDBUFF_LEN;
+
+		# if SCDED_DBG >= 3
+		printf("|RTOC adding %d bytes from trailing_buffer to new allocated send_buffer>",
+			copy_to_sb_len);
+		#endif
+
+		// copy the data from 'trailing_buffer' to beginning of 'send_buffer', and set 'send_buffer_write_pos'
+		memcpy (conn->send_buffer, conn->trailing_buffer, copy_to_sb_len);
+		conn->send_buffer_write_pos = copy_to_sb_len;
+	}
+
+	// 'trailing_buffer' is completely added to 'send_buffer' now? than cleanup!
+	if ( copy_to_sb_len == trailing_buffer_len ) {
+
+		free(conn->trailing_buffer);
+		conn->trailing_buffer = NULL;
+		conn->trailing_buffer_len = 0;
+
+		# if SCDED_DBG >= 3
+		printf("|trailing_buffer done>");
+		#endif
+	}
+
+	// seems that there will be still data in the 'trailing_buffer'
+	else {
+		int new_trailing_buffer_len = conn->trailing_buffer_len - copy_to_sb_len;
+
+		// alloc new trailing_buffer
+		char *new_trailing_buffer = (char*) malloc(new_trailing_buffer_len);
+
+		// add the rest of the data to the trailing_buffer
+		memcpy (new_trailing_buffer, conn->trailing_buffer + copy_to_sb_len, new_trailing_buffer_len);
+
+		// free old 'trailing_buffer', save 'new_trailing_buffer'
+		free(conn->trailing_buffer);
+		conn->trailing_buffer = new_trailing_buffer;
+		conn->trailing_buffer_len = new_trailing_buffer_len;
+
+		# if SCDED_DBG >= 3
+		printf("|trailing_buffer size now: %d>",
+			new_trailing_buffer_len);
+		#endif
+	}
+  }
+
+// -------------------------------------------------------------------------------------------------
+
+ // Prio 1: If 'send_buffer_write_pos' is > 0, data is in 'send_buffer', try to send it ...
+  if ( conn->send_buffer_write_pos ) {
+
+	// -> Transmit it (if Sent-Cb is NOT pending), Sent_Cb will always be fired when data is sent out ...
+	if ( !( conn->ConnCtrlFlags & F_TXED_CALLBACK_PENDING ) ) {
+
+		// OK, transmit the 'send_buffer'
+		Telnet_TransmitSendBuff(conn);
+	
+		// Keep connection only for 10 Sec
+//		espconn_regist_time(conn->conn,10,1);	// MAX 10 Sec for answer (HTTPD_TIMEOUT ?)
+	}
+
+	// debug warning ->
+	else {
+
+		# if TELNETD_DBG >= 1
+		printf("\nTelnet RespToOpenConn, can not send now, 'F_TXED_CALLBACK_PENDING' is set>");
+		#endif
+
+		// we are expecting a Sent_Cb soon !
+	}
+  }
+}
+
+
+
 /* --------------------------------------------------------------------------------------------------
- *  FName: Telnet_SendToSendBuff
+ *  FName: SCDED_SendToSendBuff
  *  Desc: Sends / adds data to the Send-Buffer, without doing the real transmission.
  *        May create (alloc) an send buffer. May also create an manage an Trailing Buffer if SB is full.
  *        If len is -1 the data is seen as a C-string. Len will be determined.
  *  Info: CAN SEND FROM FLASH. DO NOT USE LENGTH AUTO-DETECTION IF SENDING DATA DIRECT FROM FLASH !!!
- *  Para: Telnet_DConnSlotData_t *conn -> ptr to the connection slot
+ *  Para: WebIf_HTTPDConnSlotData_t *conn -> ptr to the connection slot
  *        const char *data -> ptr to the data to send 
  *        int len -> length of data. If -1 the data is seen as a C-string and len will be determined.
- *  Rets: int bytes free in sendbuff
+ *  Rets: int bytes free in send_buffer
  * --------------------------------------------------------------------------------------------------
  */
 int
-Telnet_SendToSendBuff(Telnet_DConnSlotData_t *conn
-		,const char *data
-		,int len)
-  {
-
+Telnet_Send_To_Send_Buff(Telnet_DConnSlotData_t* conn, const char* data, int len)
+{
   // if len is -1, the data is seen as a C-string. Determine length ..
-  if (len < 0) len = strlen(data);
+  if (len < 0) len = strlen (data);
 
-  // in case we have nothing to send -> return free bytes in sendbuff
-  if (!len) return (MAX_SENDBUFF_LEN - conn->sendBuffLen);
+  // in case we have nothing to send -> return free bytes in send_buffer
+  if ( !len ) return (MAX_SENDBUFF_LEN - conn->send_buffer_write_pos);
 
-  // WE WILL DEFINITIVLY SEND DATA HERE - MAKE SEND REQUEST
-  conn->conn->common.Common_CtrlRegA |= F_WANTS_WRITE;
+  // alloc 'send_buffer', if not already done
+  if (!conn->send_buffer_write_pos)
+	conn->send_buffer = (char*) malloc (MAX_SENDBUFF_LEN);
 
-  // alloc Send-Buffer, if not already done
-  if (conn->sendBuff == NULL)
-	conn->sendBuff = (char*) malloc(MAX_SENDBUFF_LEN);
+  // will data fit into 'send_buffer'? Then simply copy ...
+  if (conn->send_buffer_write_pos + len <= MAX_SENDBUFF_LEN) {
 
-  // will data fit in Send-Buffer? Then simply copy ...
-  if (conn->sendBuffLen + len <= MAX_SENDBUFF_LEN)
+	// data fits, copy to 'send_buffer' ...
+	SCDE_memcpy_plus(conn->send_buffer + conn->send_buffer_write_pos, data, len);
+	conn->send_buffer_write_pos += len;
 
-	// data fits, copy to Send-Buffer ...
-	{
+	// return free bytes in 'send_buffer'
+	return (MAX_SENDBUFF_LEN - conn->send_buffer_write_pos);
+  }
 
-	// copy to Send-Buffer
-	SCDE_memcpy_plus(conn->sendBuff + conn->sendBuffLen, data, len);
-	conn->sendBuffLen += len;
+  // else data does NOT fit into 'send_buffer' ...
+  else {
 
-	// return free bytes in Send-Buffer
-	return (MAX_SENDBUFF_LEN - conn->sendBuffLen);
+	// Step 1: copy data to 'send_buffer' till full
+	int send_buffer_free = MAX_SENDBUFF_LEN - conn->send_buffer_write_pos;
 
-	}
-
-  else
-
-	 // else data does NOT fit in Send-Buffer ...
-	{
-
-	// Step 1: copy data to Send-Buffer till full
-	int SendBufFree = MAX_SENDBUFF_LEN - conn->sendBuffLen;
-
-	if (SendBufFree)
-
-		{
+	if (send_buffer_free) {
 
 		// copy to Send-Buffer
-		SCDE_memcpy_plus(conn->sendBuff + conn->sendBuffLen, data, SendBufFree);
+		SCDE_memcpy_plus(conn->send_buffer + conn->send_buffer_write_pos, data, send_buffer_free);
 
-		conn->sendBuffLen += SendBufFree;
+		conn->send_buffer_write_pos += send_buffer_free;
+	}
 
-		}
+	// Step 2: create / add the rest of data to 'trailing_buffer'
+	int trailing_buffer_len;
 
-	// Step 2: create / add the rest of data to Trailing-Buffer
-	int NewTrailingBuffLen;
+	// if there is no 'trailing_buffer' get new length
+	if (!conn->trailing_buffer_len) trailing_buffer_len = len - send_buffer_free;
 
-	// if there is no Trailing-Buffer / empty ... -> get new length
-	if (conn->TrailingBuff == NULL) NewTrailingBuffLen = len - SendBufFree;
+	// else if there was a 'trailing_buffer' ... -> get new length
+	else trailing_buffer_len = conn->trailing_buffer_len + len - send_buffer_free;
 
-	// else if there was a Trailing-Buffer ... -> get new length
-	else NewTrailingBuffLen =
-		conn->TrailingBuffLen + len - SendBufFree;
+	// alloc new 'trailing_buffer'
+	char* new_trailing_buffer = (char*) malloc (trailing_buffer_len + 1);
 
-	// alloc new Trailing-Buffer
-	char *NewTrailingBuff = (char*) malloc(NewTrailingBuffLen+1);
-
-	// copy old Trailing-Buffer to new Trailing-Buffer, and dealloc old
-	if (conn->TrailingBuff != NULL)
-
-		{
+	// copy old 'trailing_buffer' to new 'trailing_buffer', and dealloc old
+	if (conn->trailing_buffer != NULL) {
 
 		// copy old Trailing-Buffer to new Trailing-Buffer
-		memcpy (NewTrailingBuff, conn->TrailingBuff, conn->TrailingBuffLen);
+		memcpy (new_trailing_buffer, conn->trailing_buffer, conn->trailing_buffer_len);
 
 		// dealloc old Trailing-Buffer
-		free(conn->TrailingBuff);
-
-		}
+		free(conn->trailing_buffer);
+	}
 
 	// add the rest of the new data to the Trailing Buffer and save
-	SCDE_memcpy_plus(NewTrailingBuff + conn->TrailingBuffLen, data + SendBufFree, len - SendBufFree);
+	SCDE_memcpy_plus(new_trailing_buffer + conn->trailing_buffer_len, data + send_buffer_free, len - send_buffer_free);
 
-	# if SCDED_DBG >= 3
-	printf("|note: adding %d bytes to TrailingBuff>",
-		NewTrailingBuffLen);
+	# if TELNETD_DBG >= 3
+	printf("|note: adding %d bytes to trailing_buffer>",
+		trailing_buffer_len);
 	#endif
 
 	// Store 
-	conn->TrailingBuff = NewTrailingBuff;
-	conn->TrailingBuffLen = NewTrailingBuffLen;
-
-	}
-
-  // here 0 bytes free in sendbuff
-  return 0;
-
+	conn->trailing_buffer = new_trailing_buffer;
+	conn->trailing_buffer_len = trailing_buffer_len;
   }
+
+  // here 0 bytes free in send_buffer
+  return 0;
+}
 
 
 
 /* --------------------------------------------------------------------------------------------------
  *  FName: Telnet_TransmitSendBuff
- *  Desc: Function to finally transmitts the data in the Send-Buffer (conn->sendBuff - if any)
+ *  Desc: Function to finally transmit the data stored in the Send-Buffer (conn->send_buffer, if any)
  *
- *  Para: Telnet_DConnSlotData_t *conn -> ptr to connection slot
+ *  Para: SCDED_DConnSlotData_t *conn -> ptr to connection slot
  *  Rets: -/-
  * --------------------------------------------------------------------------------------------------
  */
 void
-Telnet_TransmitSendBuff(Telnet_DConnSlotData_t *conn) 
+Telnet_TransmitSendBuff(Telnet_DConnSlotData_t* conn) 
 {
+  // We MUST HAVE an allocated 'send_buffer' here, indicated by an 'send_buffer_write_pos' > 0 !
+  // And also 'F_TXED_CALLBACK_PENDING' MUST BE NOT set ,
 
-  // do we have an allocated Send-Buffer -> there is something to send in the Send-Buffer !
-  if (conn->sendBuff) {  //(conn->sendBuffLen)
+  // we need to get the ptr to the platform specific conn
+  //struct espconn   *platform_conn = arg;		// ESP 8266 NonOS
+  Entry_Telnet_Definition_t* platform_conn = conn->conn;	// ESP 32 RTOS
 
-	# if SCDED_DBG >= 3
-	printf("|TX SendBuff, slot %d, to remote:%d.%d.%d.%d:%d from local port:%d, len=%d. mem:%d>",
-		conn->SlotNo,
-		conn->conn->proto.tcp->remote_ip[0],
-		conn->conn->proto.tcp->remote_ip[1],
-		conn->conn->proto.tcp->remote_ip[2],
-		conn->conn->proto.tcp->remote_ip[3],
-		conn->conn->proto.tcp->remote_port,
-		conn->conn->proto.tcp->local_port,
-		conn->sendBuffLen,
-		system_get_free_heap_size());
-	# endif
+//---------------------------------------------------------------------------------------------------
 
-	# if SCDED_DBG >= 5
- 	 SCDEFn_at_Telnet_M->HexDumpOutFn ("\nTX-SendBuff",
-		conn->sendBuff,
-		conn->sendBuffLen);
-	# endif
+ #if TELNETD_DBG >= 7
+  SCDEFn_at_Telnet_M->Log3Fn(platform_conn->common.name,
+	platform_conn->common.nameLen,
+	7,
+	"WebIf_Transmit_Send_Buffer (module '%.*s'), slot_no '%d', to "
+	"remote '%d.%d.%d.%d:%d' from local port '%d', len '%d', f-heap '%d'.",
+	platform_conn->common.module->provided->typeNameLen,
+	platform_conn->common.module->provided->typeName,
+	platform_conn->slot_no,
+	platform_conn->proto.tcp->remote_ip[0],
+	platform_conn->proto.tcp->remote_ip[1],
+	platform_conn->proto.tcp->remote_ip[2],
+	platform_conn->proto.tcp->remote_ip[3],
+	platform_conn->proto.tcp->remote_port,
+	platform_conn->proto.tcp->local_port,
+	conn->send_buffer_write_pos,
+	system_get_free_heap_size());
+  #endif
 
-	int8_t Result = Telnet_sent(conn->conn,
-		(uint8_t*) conn->sendBuff,
-		conn->sendBuffLen);
+//--------------------------------------------------------------------------------------------------
 
-	// show error on debug term...
- 	if (Result) {
+  #if TELNETD_DBG >= 5
+  SCDEFn_at_Telnet_M->HexDumpOutFn ("\nTX-send_buffer",
+	conn->send_buffer,
+	conn->send_buffer_write_pos);
+  #endif
 
-		# if SCDED_DBG >= 1
-		printf("\n|TX-Err:%d!>"
-			,Result);
-		# endif
-	}
+//--------------------------------------------------------------------------------------------------
 
-	// free Send-Buffer
-	free(conn->sendBuff);
+  int Result = Telnet_sent(conn->conn,
+	(uint8_t*) conn->send_buffer,
+	(uint) conn->send_buffer_write_pos);
 
-	// indicate -> no Send Buffer
-	conn->sendBuff = NULL;
+  // show error on debug term...
+   if (Result) {
 
-	// init length for next usage
-	conn->sendBuffLen = 0;
-
-			// alter code ?
-			// We sent data. We are not allowed to send again till SentCb is fired.
-			// Indicate this by F_TXED_CALLBACK_PENDING in ConCtrl
-			conn->ConnCtrlFlags |= F_TXED_CALLBACK_PENDING;
-
-	}
-
-  else {
-
-	# if SCDED_DBG >= 3
-	printf("|no allocated SendBuff, no TX!>");
+	# if TELNETD_DBG >= 1
+	printf("\n|TX-Err:%d!>"
+		,Result);
 	# endif
   }
+
+  // free Send-Buffer
+  free (conn->send_buffer);
+
+  // old indicator for no Send Buffer
+  conn->send_buffer = NULL;
+
+  // init length for next usage, indicates -> no Send Buffer
+  conn->send_buffer_write_pos = 0;
+
+  // We sent data. We are not allowed to send again till Sent_Cb is fired.
+  // Indicate this by F_TXED_CALLBACK_PENDING in ConCtrl
+  conn->ConnCtrlFlags |= F_TXED_CALLBACK_PENDING;
 }
 
 
@@ -819,25 +1010,26 @@ Telnet_TransmitSendBuff(Telnet_DConnSlotData_t *conn)
  * --------------------------------------------------------------------------------------------------
  *  FName: Telnet_SentCb
  *  Desc: Data was sent callback is triggered when data was sent to a client conn of Telnet
- *  Para: void* arg -> Telnet_Definition_t* Telnet_Definition
+ *  Para: void* arg -> Entry_Telnet_Definition_t* Telnet_Definition
  *  Rets: -/-
  * --------------------------------------------------------------------------------------------------
  */
 void
 Telnet_SentCb(void* arg)
-  {
-
+{
   // the arg is a ptr to the platform specific conn
   //struct espconn   *platform_conn = arg;	// ESP 8266 NonOS
-  Telnet_Definition_t *platform_conn = arg;	// ESP 32 RTOS
+  Entry_Telnet_Definition_t *platform_conn = arg;	// ESP 32 RTOS
 
   // get assigned TelnetD-Connection-Slot-Data
   Telnet_DConnSlotData_t *conn
 	= platform_conn->reverse;
 
-  # if SCDED_DBG >= 3
+//---------------------------------------------------------------------------------------------------
+
+  # if TELNETD_DBG >= 3
   printf("\nTelnet SentCb, slot:%d, remote:%d.%d.%d.%d:%d, local port:%d, mem:%d>"
-	,conn->SlotNo
+	,conn->slot_no
 	,conn->conn->proto.tcp->remote_ip[0]
 	,conn->conn->proto.tcp->remote_ip[1]
 	,conn->conn->proto.tcp->remote_ip[2]
@@ -849,38 +1041,23 @@ Telnet_SentCb(void* arg)
 
 // --------------------------------------------------------------------------------------------------
 
-  # if SCDED_DBG >= 1
-  if (!(conn->ConnCtrlFlags & F_TXED_CALLBACK_PENDING))
-	{
+  # if TELNETD_DBG >= 1
+  if (! ( conn->ConnCtrlFlags & F_TXED_CALLBACK_PENDING ) ) {
 	printf("|Err! TXedCbFlag missing>");
-	}
+  }
   #endif
 
-  // speed up cpu
-//  system_update_cpu_freq(SYS_CPU_160MHz);
-
-  // Connection-Control Flags management for Sent-Callback
-  // - CLEAR: F_TXED_CALLBACK_PENDING, because SentCb is fired. TXED_CALLBACK is no longer pending ...
-  // - CLEAR: F_CALLED_BY_RXED_CALLBACK, because this is not RX-Callback ...
-  // - CLEAR: F_GENERATE_IDLE_CALLBACK, because now we have a callback. No Idle Callback is needed ...
-  // clr flags
-  conn->ConnCtrlFlags &= ~(F_TXED_CALLBACK_PENDING + F_CALLED_BY_RXED_CALLBACK + F_GENERATE_IDLE_CALLBACK);
+  // set Connection-Control Flags - for Sent-Callback
+  // CLR: F_GENERATE_IDLE_CALLBACK, because now we have a callback. No Idle Callback is needed ...
+  // CLR: F_TXED_CALLBACK_PENDING, because SentCb is fired. TXED_CALLBACK is no longer pending ...
+  // CLR: F_CALLED_BY_RXED_CALLBACK, because this is not RX-Callback ...
+  conn->ConnCtrlFlags &= ~(F_GENERATE_IDLE_CALLBACK + F_TXED_CALLBACK_PENDING + F_CALLED_BY_RXED_CALLBACK);
 
 // --------------------------------------------------------------------------------------------------
 
   // Response to open connection...
-//  SCDED_RespToOpenConn(conn);
-
-
-  // transmit data - and free (if any)
-  Telnet_TransmitSendBuff(conn); 
-
-// --------------------------------------------------------------------------------------------------
-
-  // slow down cpu
- // system_update_cpu_freq(SYS_CPU_80MHz);
-
-  }
+  Telnet_RespToOpenConn(conn);
+}
 
 
 
@@ -888,29 +1065,28 @@ Telnet_SentCb(void* arg)
  * --------------------------------------------------------------------------------------------------
  *  FName: Telnet_RecvCb
  *  Desc: Received callback is triggered when a data block is received from an client conn of Telnet
- *  Para: void* arg -> Telnet_Definition_t* Telnet_Definition
+ *  Para: void* arg -> Entry_Telnet_Definition_t* Telnet_Definition
  *       char *recvdata -> ptr to received data
  *       unsigned short recvlen -> length of received data 
  *  Rets: -/-
  * --------------------------------------------------------------------------------------------------
  */
 void
-Telnet_RecvCb(void *arg,
-		char *recvdata,
-		unsigned short recvlen) 
-  {
-
+Telnet_RecvCb(void *arg, char *recvdata, unsigned short recvlen) 
+{
   // the arg is a ptr to the platform specific conn
   //struct espconn   *platform_conn = arg;	// ESP 8266 NonOS
-  Telnet_Definition_t *platform_conn = arg;	// ESP 32 RTOS
+  Entry_Telnet_Definition_t *platform_conn = arg;	// ESP 32 RTOS
 
   // get assigned HTTPD-Connection-Slot-Data
   Telnet_DConnSlotData_t *conn
 	= platform_conn->reverse;
 
-  # if SCDED_DBG >= 3
+//---------------------------------------------------------------------------------------------------
+
+  # if TELNETD_DBG >= 3
   printf("\nTelnet RecvCb, slot %d, remote:%d.%d.%d.%d:%d,local port:%d, len:%d, mem:%d>"
-	,platform_conn->SlotNo
+	,platform_conn->slot_no
 	,platform_conn->proto.tcp->remote_ip[0]
 	,platform_conn->proto.tcp->remote_ip[1]
 	,platform_conn->proto.tcp->remote_ip[2]
@@ -919,42 +1095,33 @@ Telnet_RecvCb(void *arg,
 	,platform_conn->proto.tcp->local_port
 	,recvlen
 	,system_get_free_heap_size());
-
   #endif
 
-  # if SCDED_DBG >= 5
+//---------------------------------------------------------------------------------------------------
+
+  # if TELNETD_DBG >= 5
   SCDEFn_at_Telnet_M->HexDumpOutFn ("RX-HEX", recvdata, recvlen);
   # endif
 
 // --------------------------------------------------------------------------------------------------
 
-  // speed up cpu
-//  system_update_cpu_freq(SYS_CPU_160MHz);
-
-  // Connection-Control Flags management for Received-Callback
-  // - CLEAR: F_GENERATE_IDLE_CALLBACK, because now we have Idle Callback and it is needed once ...
-  // - SET: F_CALLED_BY_RXED_CALLBACK, because this is RX-Callback ... ...
-  // clr flags
+  // set Connection-Control Flags - for Received-Callback
+  // CLR: F_GENERATE_IDLE_CALLBACK, because now we have Idle Callback and it is needed once ...
   conn->ConnCtrlFlags &= ~(F_GENERATE_IDLE_CALLBACK);
-  // set flags
+  // SET: F_CALLED_BY_RXED_CALLBACK, because this is RX-Callback ...
   conn->ConnCtrlFlags |= (F_CALLED_BY_RXED_CALLBACK);
 
-// --------------------------------------------------------------------------------------------------
-
-  // Reset Inactivity Timer because we had an callback ...
-  conn->InactivityTimer = 0;
-
-// --------------------------------------------------------------------------------------------------
+//--------------------------------------------------------------------------------------------------
 
   // give the input to telnet lib for processing
-  telnet_recv(conn->tnHandle, (char *) recvdata, recvlen); //(char *)buffer, len);
+  telnet_recv(conn->tnHandle, (char*) recvdata, recvlen); //(char *)buffer, len);
 
-// --------------------------------------------------------------------------------------------------
+//---------------------------------------------------------------------------------------------------
 
-  // slow down cpu
-//  system_update_cpu_freq(SYS_CPU_80MHz);
+  // Response to open connection now	
+  Telnet_RespToOpenConn(conn);
+}
 
-  }
 
 
 
@@ -963,27 +1130,25 @@ Telnet_RecvCb(void *arg,
  *  FName: Telnet_ReconCb
  *  Desc: Reconnect Info callback is triggered when the connection to client conn of SCDED is broken
  *        its unclear what to do in this cases ...
- *  Para: void* arg -> Telnet_Definition_t* Telnet_Definition
+ *  Para: void* arg -> Entry_Telnet_Definition_t* Telnet_Definition
  *
  *  Rets: -/-
  * --------------------------------------------------------------------------------------------------
  */
 void
-Telnet_ReconCb(void *arg
-		,int8_t error)
-  {
-
+Telnet_ReconCb(void *arg, int8_t error)
+{
   // the arg is a ptr to the platform specific conn
   //struct espconn   *platform_conn = arg;	// ESP 8266 NonOS
-  Telnet_Definition_t *platform_conn = arg;	// ESP 32 RTOS
+  Entry_Telnet_Definition_t* platform_conn = arg;	// ESP 32 RTOS
 
   // get assigned TelnetD-Connection-Slot-Data
   Telnet_DConnSlotData_t *conn
 	= platform_conn->reverse;
 
-  # if SCDED_DBG >= 3
+  # if TELNETD_DBG >= 3
   printf("\nTelnet ReconCb, slot %d, remote:%d.%d.%d.%d:%d,local port:%d, error:%d, mem:%d>"
-	,platform_conn->SlotNo
+	,platform_conn->slot_no
 	,platform_conn->proto.tcp->remote_ip[0]
 	,platform_conn->proto.tcp->remote_ip[1]
 	,platform_conn->proto.tcp->remote_ip[2]
@@ -1010,8 +1175,7 @@ ESPCONN_PROTO_MSG - SSL application invalid
 */
 
   Telnet_DisconCb(arg);
-
-  }
+}
 
 
 
@@ -1019,25 +1183,26 @@ ESPCONN_PROTO_MSG - SSL application invalid
  *  FName: Telnet_DisconCb
  *  Desc: Disconnected callback -> conn is disconnected -> clean up, free memory
  *        its unclear what to do in this cases ...
- *  Para: void* arg -> Telnet_Definition_t* Telnet_Definition
+ *  Para: void* arg -> Entry_Telnet_Definition_t* Telnet_Definition
  *  Rets: -/-
  * --------------------------------------------------------------------------------------------------
  */
 void
 Telnet_DisconCb(void *arg)
-  {
-
+{
   // the arg is a ptr to the platform specific conn
 //struct espconn     *platform_conn = arg;	// ESP 8266 NonOS
-  Telnet_Definition_t *platform_conn = arg;	// ESP 32 RTOS
+  Entry_Telnet_Definition_t *platform_conn = arg;	// ESP 32 RTOS
 
   // get assigned TelnetD-Connection-Slot-Data
   Telnet_DConnSlotData_t *conn
 	= platform_conn->reverse;
 
- # if SCDED_DBG >= 3
-  printf("\nWebIf DisconCb, slot %d, remote:%d.%d.%d.%d:%d, local port:%d, mem:%d>"
-	,platform_conn->SlotNo
+//---------------------------------------------------------------------------------------------------
+
+ # if TELNETD_DBG >= 3
+  printf("\nTelnet DisconCb, slot %d, remote:%d.%d.%d.%d:%d, local port:%d, mem:%d>"
+	,platform_conn->slot_no
 	,platform_conn->proto.tcp->remote_ip[0]
 	,platform_conn->proto.tcp->remote_ip[1]
 	,platform_conn->proto.tcp->remote_ip[2]
@@ -1055,24 +1220,19 @@ Telnet_DisconCb(void *arg)
   // !!! CONN IS GONE FROM THIS POINT !!!
 
   // free allocated memory for the Send-Buffer, if any
-  if (conn->sendBuff != NULL) free(conn->sendBuff);
+//if (conn->send_buffer != NULL) free (conn->send_buffer);
+  if (conn->send_buffer_write_pos) free (conn->send_buffer);
 
-  // free allocated memory for the Trailing-Buffer, if any
-  if (conn->TrailingBuff != NULL) free(conn->TrailingBuff);
-
-
-  // nicht schön
-  // init http parser for new conn (goal is to free allocated memory!)
-//  HTTPD_ParserInit(conn, HTTP_BOTH);
-
+  // free allocated memory for Trailing Buff, if any
+//if (conn->trailing_buffer != NULL) free (conn->trailing_buffer);
+  if (conn->trailing_buffer_len) free (conn->trailing_buffer);
 
   // force libtelnet to free all allocated memory
   if (conn->tnHandle != NULL) telnet_free(conn->tnHandle);
 
   // finally free allocated memory for this Telnet_DConnSlotData_t struct
-  free(conn);
-
-  }
+  free (conn);
+}
 
 
 
@@ -1080,22 +1240,22 @@ Telnet_DisconCb(void *arg)
  *  FName: Telnet_ConnCb
  *  Desc: Connected callback is triggered in case of new connections to Telnet-Daemon
  *  Info:
- *  Para: void* arg -> Telnet_Definition_t* Telnet_Definition
+ *  Para: void* arg -> Entry_Telnet_Definition_t* Telnet_Definition
  *  Rets: -/-
  * --------------------------------------------------------------------------------------------------
  */
 void
 Telnet_ConnCb(void *arg)
-  {
+{
   // the arg is a ptr to the platform specific conn
   //struct espconn   *platform_conn = arg;	// ESP 8266 NonOS
-  Telnet_Definition_t *platform_conn = arg;	// ESP 32 RTOS
+  Entry_Telnet_Definition_t *platform_conn = arg;	// ESP 32 RTOS
 
 // --------------------------------------------------------------------------------------------------
 
-// # if SCDED_DBG >= 3
+ # if TELNETD_DBG >= 3
   printf("\nTelnet ConCb, gets slot %d of %d, from remote:%d.%d.%d.%d:%d to local port:%d, mem:%d>"
-	,platform_conn->SlotNo
+	,platform_conn->slot_no
 	,MAX_SCDED_CONN
 	,platform_conn->proto.tcp->remote_ip[0]
 	,platform_conn->proto.tcp->remote_ip[1]
@@ -1104,23 +1264,22 @@ Telnet_ConnCb(void *arg)
 	,platform_conn->proto.tcp->remote_port
 	,platform_conn->proto.tcp->local_port
 	,system_get_free_heap_size());
-
-//  #endif
+  #endif
 
 // --------------------------------------------------------------------------------------------------
 
-  // alloc conn-slot memory
-  Telnet_DConnSlotData_t *conn 
-	= (Telnet_DConnSlotData_t*) malloc(sizeof(Telnet_DConnSlotData_t));
+  // alloc TELNETD connection slot
+  Telnet_DConnSlotData_t* conn 
+	= (Telnet_DConnSlotData_t*) malloc (sizeof (Telnet_DConnSlotData_t));
 
   // zero conn-slot memory
-  memset(conn, 0, sizeof(Telnet_DConnSlotData_t));
+  memset(conn, 0, sizeof (Telnet_DConnSlotData_t));
 
   // store current connection in created conn slot
   conn->conn = platform_conn;
 
  // Write slot number for identification
-  conn->SlotNo = conn->conn->SlotNo;
+  conn->slot_no = conn->conn->slot_no;
 
   // store reverse reference
   platform_conn->reverse = conn;
@@ -1140,8 +1299,7 @@ Telnet_ConnCb(void *arg)
 // --------------------------------------------------------------------------------------------------
 
   // telnet options for this client
-  static const telnet_telopt_t my_telopts[] =
-  {
+  static const telnet_telopt_t telopts[] = {
         //       telopt                 us          him
 	{ TELNET_TELOPT_ECHO,      TELNET_DONT, TELNET_DONT }, //TELNET_WILL / TELNET_DONT
 	{ TELNET_TELOPT_TTYPE,     TELNET_WILL, TELNET_DONT }, //TELNET_WILL / TELNET_DONT
@@ -1154,13 +1312,14 @@ Telnet_ConnCb(void *arg)
   };
 
   // init libtelnet - for this client
-  conn->tnHandle = telnet_init(my_telopts
+  conn->tnHandle = telnet_init(telopts
 	,Telnet_LibtelnetEventHandler
 	,0
 	,conn);
 
-  // TX welcome message to connected terminal
-  char *welcomeMSG;
+  // prepare an welcome message to new connected terminal
+  char* welcomeMSG;
+
   size_t welcomeMSGLen = asprintf(&welcomeMSG
 		,"--- Smart-Connected-Device-Engine, Telnet-Access, Welcome! ---\r\n"
 		 "Service provided by Type-Name: %.*s, Def-Name: %.*s\r\n\r\n"
@@ -1170,6 +1329,7 @@ Telnet_ConnCb(void *arg)
 		,(int) conn->conn->common.nameLen
 		,conn->conn->common.name);
 
+  // send the welcome msg
   telnet_send(conn->tnHandle
 	,welcomeMSG
 	,welcomeMSGLen);
@@ -1179,12 +1339,12 @@ Telnet_ConnCb(void *arg)
 //				,"\r\n"
 //				,2);
 
-  free(welcomeMSG);
+  // and free the welcome msg
+  free (welcomeMSG);
 
   // transmit data - and free (if any)
   Telnet_TransmitSendBuff(conn); 
-
-  }
+}
 
 
 
@@ -1192,24 +1352,38 @@ Telnet_ConnCb(void *arg)
  *--------------------------------------------------------------------------------------------------
  *FName: Telnet_sent (espconn_sent compatible Fn)
  * Desc: Platform conn - Send data Fn
- * Para: Telnet_Definition_t *Telnet_Definition -> Telnet Definition
+ * Para: Entry_Telnet_Definition_t *Telnet_Definition -> Telnet Definition
  *       uint8_t *Buff -> buffer with data to send
  *       uint Len -> length of data to send
  * Rets: int -> written data
  *--------------------------------------------------------------------------------------------------
  */
 int
-Telnet_sent(Telnet_Definition_t *Telnet_Definition
-	,uint8_t *Buff
-	,uint Len)
-  {
+Telnet_sent(Entry_Telnet_Definition_t* p_entry_telnet_definition, uint8_t* send_buffer, uint send_buffer_len)
+{
+  # if TELNETD_DBG >= 5
+  printf("\n|Telnet_Sent len:%d!>"
+	,send_buffer_len);
+  # endif
 
   // select for want writing (F_WANTS_WRITE), because maybe we have more data to send ...
-  Telnet_Definition->common.Common_CtrlRegA |= F_WANTS_WRITE;
+  p_entry_telnet_definition->common.Common_CtrlRegA |= F_WANTS_WRITE;
 
-  return (write(Telnet_Definition->common.fd, Buff, Len) >= 0);
+  int result = write(p_entry_telnet_definition->common.fd, send_buffer, send_buffer_len);
 
+  // an error occured ?
+  if ( !( result >= 0 ) ) {
+
+	#if TELNETD_DBG >= 5
+	printf("\n|Telnet_Send has error %d as result!>", result);
+	#endif
+
+	result = 0;
   }
+
+ return result; 
+//  return (write(p_entry_webif_definition->common.fd, send_buffer, send_buffer_len) >= 0);
+}
 
 
 
@@ -1218,30 +1392,31 @@ Telnet_sent(Telnet_Definition_t *Telnet_Definition
  *FName: Telnet_disconnect (espconn_disconnect compatible Fn)
  * Desc: Platform conn - Disconnect Fn
  * Info: 
- * Para: Telnet_Definition_t *Telnet_Definition -> Telnet_Definition
+ * Para: p_entry_telnet_definition* Telnet_Definition -> Telnet_Definition
  * Rets: -/-
  *--------------------------------------------------------------------------------------------------
  */
 void
-Telnet_disconnect(Telnet_Definition_t *Telnet_Definition)
+Telnet_disconnect(Entry_Telnet_Definition_t* p_entry_telnet_definition)
 {
   // select for disconnecting (F_NEEDS_CLOSE)
-  Telnet_Definition->Telnet_CtrlRegA |= F_NEEDS_CLOSE;
+  p_entry_telnet_definition->Telnet_CtrlRegA |= F_NEEDS_CLOSE;
 
   // select for want writing (F_WANTS_WRITE), because the real close is done in the write select of code
-  Telnet_Definition->common.Common_CtrlRegA |= F_WANTS_WRITE;
+  p_entry_telnet_definition->common.Common_CtrlRegA |= F_WANTS_WRITE;
 }
+
 
 
 /* --------------------------------------------------------------------------------------------------
  *  FName: Telnet_UndefineRaw
  *  Desc: internal cleanup and Telnet_Definition delete
- *  Para: Telnet_Definition_t *Telnet_Definition -> Telnet Definition that should be deleted
+ *  Para: Entry_Telnet_Definition_t *Telnet_Definition -> Telnet Definition that should be deleted
  *  Rets: -/-
  * --------------------------------------------------------------------------------------------------
  */
 int 
-Telnet_UndefineRaw(Telnet_Definition_t* Telnet_Definition)
+Telnet_UndefineRaw(Entry_Telnet_Definition_t* Telnet_Definition)
 {
   // connection close
   close(Telnet_Definition->common.fd);
@@ -1251,21 +1426,20 @@ Telnet_UndefineRaw(Telnet_Definition_t* Telnet_Definition)
 
 // --- dealloc? non master conns?
 
-
   // remove WebIF Definition
-  STAILQ_REMOVE(&SCDERoot_at_Telnet_M->HeadCommon_Definitions
-	,(Common_Definition_t*) Telnet_Definition
-	,Common_Definition_s
-	,entries);
+  STAILQ_REMOVE(&SCDERoot_at_Telnet_M->HeadCommon_Definitions,
+	(Common_Definition_t*) Telnet_Definition,
+	Common_Definition_s,
+	entries);
 
   // free Name
-  free(Telnet_Definition->common.name);
+  free (Telnet_Definition->common.name);
 
   // free TCP struct
-  free(Telnet_Definition->proto.tcp); 
+  free (Telnet_Definition->proto.tcp); 
 
   // free WebIF_Definition
-  free(Telnet_Definition);
+  free (Telnet_Definition);
 
   return 0;
 }
@@ -1298,8 +1472,8 @@ Telnet_Define(Common_Definition_t *Common_Definition)//, const char *Definition)
   strTextMultiple_t *retMsg = NULL;
 
   // make common ptr to modul specific ptr
-  Telnet_Definition_t* Telnet_Definition =
-		  (Telnet_Definition_t*) Common_Definition;
+  Entry_Telnet_Definition_t* Telnet_Definition =
+		  (Entry_Telnet_Definition_t*) Common_Definition;
 
   #if SCDEH_DBG >= 5
   printf("\n|Telnet_Def, Def:%.*s>"
@@ -1397,7 +1571,7 @@ Telnet_Define(Common_Definition_t *Common_Definition)//, const char *Definition)
 	} while(ret != 0);
 
 
-//  # if SCDED_DBG >= 3
+//  # if TELNETD_DBG >= 3
  /* printf("|local at:%u.%u.%u.%u:%u,port:%u>"
 	,(uint8_t*) &server_addr.sin_addr.s_addr
 	,(uint8_t*) &server_addr.sin_addr.s_addr+1
@@ -1468,11 +1642,11 @@ Telnet_Define(Common_Definition_t *Common_Definition)//, const char *Definition)
  * --------------------------------------------------------------------------------------------------
  */
 int 
-Telnet_Direct_Read(Common_Definition_t* p_entry_definition)
+Telnet_Direct_Read(Entry_Definition_t* p_entry_definition)
 {
   // make common ptr to modul specific ptr
-  Telnet_Definition_t* p_entry_telnet_definition = 
-	(Telnet_Definition_t*) p_entry_definition;
+  Entry_Telnet_Definition_t* p_entry_telnet_definition = 
+	(Entry_Telnet_Definition_t*) p_entry_definition;
 
 // -------------------------------------------------------------------------------------------------
 
@@ -1493,7 +1667,7 @@ Telnet_Direct_Read(Common_Definition_t* p_entry_definition)
   int32_t len;
 
   // FD of the new client connection
-  int32_t NewClientFD;
+  int32_t new_client_fd;
 
   // sockaddr_in, to get info about new client, contains port, ip-addr, family
   struct sockaddr_in remote_addr;
@@ -1514,17 +1688,17 @@ Telnet_Direct_Read(Common_Definition_t* p_entry_definition)
 	uint32_t SlotCtrlRegBF = 
 		p_entry_telnet_definition->Telnet_DInstanceCfg->SlotCtrlRegBF;
 
-	uint8_t NewSlotNo;
+	uint8_t new_slot_no;
 
 	// MAX_SLOTS_PER_INSTANCE -> uint32_t BF used in code -> 32 64?
-	for ( NewSlotNo = 0 ; NewSlotNo < 32 ; NewSlotNo++ ) {
+	for ( new_slot_no = 0 ; new_slot_no < 32 ; new_slot_no++ ) {
 
-		if ( ! ( SlotCtrlRegBF & ( 0b1 << NewSlotNo ) ) )
+		if ( ! ( SlotCtrlRegBF & ( 0b1 << new_slot_no ) ) )
 			break;
 	}
 
 	// Check if we got a free slot? -> 'no slots free' error
-	if ( NewSlotNo >= 32 ) {
+	if ( new_slot_no >= 32 ) {
 
 		SCDEFn_at_Telnet_M->Log3Fn(p_entry_telnet_definition->common.name,
 			p_entry_telnet_definition->common.nameLen,
@@ -1536,7 +1710,7 @@ Telnet_Direct_Read(Common_Definition_t* p_entry_definition)
 	}
 
 	// mark found slot as used in Slot-Control-Register-Bitfield
-	SlotCtrlRegBF |= ( 0b1 << NewSlotNo );
+	SlotCtrlRegBF |= ( 0b1 << new_slot_no );
 
 	// store Slot-Control-Register-Bitfield
 	p_entry_telnet_definition->Telnet_DInstanceCfg->SlotCtrlRegBF = SlotCtrlRegBF;
@@ -1546,11 +1720,11 @@ Telnet_Direct_Read(Common_Definition_t* p_entry_definition)
 	len = sizeof(struct sockaddr_in);
 
 	// get FD from new connection and store remote address
-	NewClientFD = accept(p_entry_telnet_definition->common.fd,
+	new_client_fd = accept(p_entry_telnet_definition->common.fd,
 		(struct sockaddr *) &remote_addr, (socklen_t *) &len);
 
 	// check for error
-	if ( NewClientFD < 0 ) {
+	if ( new_client_fd < 0 ) {
 
 		SCDEFn_at_Telnet_M->Log3Fn(p_entry_telnet_definition->common.name,
 			p_entry_telnet_definition->common.nameLen,
@@ -1564,30 +1738,30 @@ Telnet_Direct_Read(Common_Definition_t* p_entry_definition)
 // --------------------------------------------------------------------------------------------------
 
 	// create a new Telnet Definition
-	Telnet_Definition_t* p_new_entry_telnet_definition;
+	Entry_Telnet_Definition_t* p_new_entry_telnet_definition;
 
 	// alloc mem for modul specific definition structure (Common_Definition_t + X)
 	p_new_entry_telnet_definition = 
-		(Telnet_Definition_t*) malloc (sizeof (Telnet_Definition_t));
+		(Entry_Telnet_Definition_t*) malloc (sizeof (Entry_Telnet_Definition_t));
 
 	// zero the struct
-	memset (p_new_entry_telnet_definition, 0, sizeof (Telnet_Definition_t));
+	memset (p_new_entry_telnet_definition, 0, sizeof (Entry_Telnet_Definition_t));
 
 // --------------------------------------------------------------------------------------------------
 				
 	// set parameters for new connection 
-	int keepAlive = 1;	//enable keepalive
- 	int keepIdle = 60;	//60s
- 	int keepInterval = 5;	//5s
- 	int keepCount = 3;	//retry times
+	int keep_alive = 1;	//enable keepalive
+ 	int keep_idle = 60;	//60s
+ 	int keep_interval = 5;	//5s
+ 	int keep_count = 3;	//retry times
 
- 	setsockopt (NewClientFD, SOL_SOCKET, SO_KEEPALIVE, (void *) &keepAlive, sizeof (keepAlive));
-  	setsockopt (NewClientFD, IPPROTO_TCP, TCP_KEEPIDLE, (void*) &keepIdle, sizeof (keepIdle));
-  	setsockopt (NewClientFD, IPPROTO_TCP, TCP_KEEPINTVL, (void *) &keepInterval, sizeof (keepInterval));
-  	setsockopt (NewClientFD, IPPROTO_TCP, TCP_KEEPCNT, (void *) &keepCount, sizeof (keepCount));
+ 	setsockopt (new_client_fd, SOL_SOCKET, SO_KEEPALIVE, (void *) &keep_alive, sizeof (keep_alive));
+  	setsockopt (new_client_fd, IPPROTO_TCP, TCP_KEEPIDLE, (void*) &keep_idle, sizeof (keep_idle));
+  	setsockopt (new_client_fd, IPPROTO_TCP, TCP_KEEPINTVL, (void *) &keep_interval, sizeof (keep_interval));
+  	setsockopt (new_client_fd, IPPROTO_TCP, TCP_KEEPCNT, (void *) &keep_count, sizeof (keep_count));
 			
  	// store clients FD to new WebIF Definition
- 	p_new_entry_telnet_definition->common.fd = NewClientFD;
+ 	p_new_entry_telnet_definition->common.fd = new_client_fd;
 
 	// copy link to HTTPD-Instance-Configuration
 	p_new_entry_telnet_definition->Telnet_DInstanceCfg
@@ -1598,7 +1772,7 @@ Telnet_Direct_Read(Common_Definition_t* p_entry_definition)
 		= p_entry_telnet_definition->common.module;
 
 	// store Slot-Number
-	p_new_entry_telnet_definition->SlotNo = NewSlotNo;
+	p_new_entry_telnet_definition->slot_no = new_slot_no;
 
 	// clear Flag 'WANT_WRITE' in new WebIF Definition
  	p_new_entry_telnet_definition->common.Common_CtrlRegA
@@ -1610,7 +1784,7 @@ Telnet_Direct_Read(Common_Definition_t* p_entry_definition)
 
 	// get info about new client (port, ip, ...)	
  	socklen_t slen = sizeof(name);
-  	getpeername(NewClientFD, &name, (socklen_t *) &slen);
+  	getpeername(new_client_fd, &name, (socklen_t *) &slen);
 
   	struct sockaddr_in *piname = (struct sockaddr_in *) &name;
 
@@ -1622,7 +1796,7 @@ Telnet_Direct_Read(Common_Definition_t* p_entry_definition)
 
 
 	// using TCP, create struct
-	esp_tcp* tcp = (esp_tcp*) malloc (sizeof(esp_tcp));
+	esp_tcp* tcp = (esp_tcp*) malloc (sizeof (esp_tcp));
 
 	// using TCP, fill struct
 	tcp->remote_port = piname->sin_port;	// port
@@ -1665,7 +1839,7 @@ Telnet_Direct_Read(Common_Definition_t* p_entry_definition)
 		"Creating a 'definition' with F_TEMPORARY set. Exec Conn_Cb Fn",
 		p_entry_telnet_definition->common.module->provided->typeNameLen,
 		p_entry_telnet_definition->common.module->provided->typeName,
-		p_new_entry_telnet_definition->SlotNo,
+		p_new_entry_telnet_definition->slot_no,
 		p_new_entry_telnet_definition->common.fd);
 	#endif
 
@@ -1723,14 +1897,14 @@ Telnet_Direct_Read(Common_Definition_t* p_entry_definition)
 	else 	{
 
 		// execute Error Callback
-		Telnet_ReconCb(p_entry_telnet_definition, recv_buffer);
+		Telnet_ReconCb(p_entry_telnet_definition, recv_len);
 
 		// undefinde this p_entry_telnet_definition
 		Telnet_UndefineRaw(p_entry_telnet_definition);
 	}
 
   	// free our receive buffer
-  	free(recv_buffer);
+  	free (recv_buffer);
   }
 
   return 0;
@@ -1738,20 +1912,22 @@ Telnet_Direct_Read(Common_Definition_t* p_entry_definition)
 
 
 
-/* --------------------------------------------------------------------------------------------------
- *  FName: Direct_Write
- *  Desc: Called from the global select-loop when fd is in write-set 
+/*
+ * --------------------------------------------------------------------------------------------------
+ *  FName: Telnet Direct Write
+ *  Desc: Called from the global select-loop when FD is in write-set
  *  Info: But ONLY if Flag 'Want_Write' in Common_CtrlRegA is set !!!
- *  Para: 
- *  Rets: 
+ *  Para: Entry_Definition_t* p_entry_definition -> the FD owners definition
+ *  Rets: ? - unused
  * --------------------------------------------------------------------------------------------------
  */
 int 
-Telnet_Direct_Write(Common_Definition_t* p_entry_definition)
+Telnet_Direct_Write (Entry_Definition_t* p_entry_definition)
 {
+
   // make common ptr to modul specific ptr
-  Telnet_Definition_t* p_entry_telnet_definition = 
-	(Telnet_Definition_t*) p_entry_definition;
+  Entry_Telnet_Definition_t* p_entry_telnet_definition = 
+	(Entry_Telnet_Definition_t*) p_entry_definition;
 
 // -------------------------------------------------------------------------------------------------
 
@@ -1765,11 +1941,6 @@ Telnet_Direct_Write(Common_Definition_t* p_entry_definition)
   #endif
 
 // ------------------------------------------------------------------------------------------------
-
-  // clear Flag F_WANT_WRITE, will be set again when more data is send
-//  p_entry_telnet_definition->common.Common_CtrlRegA &= ~F_WANTS_WRITE;	//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! in mainfn
-
-// --------------------------------------------------------------------------------------------------
 
   // execute disconnection (indicated by NEEDS_CLOSE flag) or send more data ...
   if ( p_entry_telnet_definition->Telnet_CtrlRegA & F_NEEDS_CLOSE ) {
@@ -1835,12 +2006,12 @@ Telnet_Initialize(SCDERoot_t* SCDERootptr)
   // make locally available from data-root: SCDEFn (Functions / callbacks) for faster operation
   SCDEFn_at_Telnet_M = SCDERootptr->SCDEFn;
 
-  SCDEFn_at_Telnet_M->Log3Fn(Telnet_ProvidedByModule.typeName
-		  ,Telnet_ProvidedByModule.typeNameLen
-		  ,3
-		  ,"InitializeFn called. Type '%.*s' now useable.\n"
-		  ,Telnet_ProvidedByModule.typeNameLen
-		  ,Telnet_ProvidedByModule.typeName);
+  SCDEFn_at_Telnet_M->Log3Fn(Telnet_ProvidedByModule.typeName,
+		  Telnet_ProvidedByModule.typeNameLen,
+		  3,
+		  "InitializeFn called. Type '%.*s' now useable.",
+		  Telnet_ProvidedByModule.typeNameLen,
+		  Telnet_ProvidedByModule.typeName);
 
   return 0;
 }
@@ -1852,7 +2023,7 @@ Telnet_Initialize(SCDERoot_t* SCDERootptr)
  *  FName: Telnet_Set
  *  Desc: Processes the device-specific command line arguments from the set command
  *  Info: Invoked by cmd-line 'Set Telnet_Definition.common.Name setArgs'
- *  Para: Telnet_Definition_t *Telnet_Definition -> WebIF Definition that should get a set cmd
+ *  Para: Entry_Telnet_Definition_t *Telnet_Definition -> WebIF Definition that should get a set cmd
  *        uint8_t *setArgs -> the setArgs
  *        size_t setArgsLen -> length of the setArgs
  *  Rets: strTextMultiple_t* -> response text in allocated memory, NULL=no text
@@ -1868,7 +2039,7 @@ Telnet_Set(Common_Definition_t* Common_Definition
   strTextMultiple_t *retMsg = NULL;
 
   // make common ptr to modul specific ptr
-  Telnet_Definition_t* Telnet_Definition = (Telnet_Definition_t*) Common_Definition;
+  Entry_Telnet_Definition_t* Telnet_Definition = (Entry_Telnet_Definition_t*) Common_Definition;
 
   #if SCDEH_DBG >= 5
   printf("\n|Telnet_Set, Name:%.*s, got args:%.*s>"
@@ -1901,7 +2072,7 @@ Telnet_Set(Common_Definition_t* Common_Definition
  *  FName: Telnet_Undefine
  *  Desc: Removes the define of an "device" of 'WebIF' type. Contains devicespecific init code.
  *  Info: Invoked by cmd-line 'Undefine Telnet_Definition.common.Name'
- *  Para: Telnet_Definition_t *Telnet_Definition -> WebIF Definition that should be removed
+ *  Para: Entry_Telnet_Definition_t *Telnet_Definition -> WebIF Definition that should be removed
  *  Rets: strTextMultiple_t* -> response text NULL=no text
  * --------------------------------------------------------------------------------------------------
  */
@@ -1913,7 +2084,7 @@ Telnet_Undefine(Common_Definition_t* Common_Definition)
   strTextMultiple_t *retMsg = NULL;
 
   // make common ptr to modul specific ptr
-  Telnet_Definition_t* Telnet_Definition = (Telnet_Definition_t*) Common_Definition;
+  Entry_Telnet_Definition_t* Telnet_Definition = (Entry_Telnet_Definition_t*) Common_Definition;
 
   #if SCDEH_DBG >= 5
   printf("\n|Telnet_Undefine, Name:%.*s>"
@@ -1953,10 +2124,10 @@ Telnet_Undefine(Common_Definition_t* Common_Definition)
  *--------------------------------------------------------------------------------------------------
  */
 void
-Telnet_espconn_regist_recvcb(Telnet_Definition_t *conn
-			, espconn_recv_callback recv_callback)
+Telnet_espconn_regist_recvcb(Entry_Telnet_Definition_t* p_conn,
+	espconn_recv_callback recv_callback)
 {
-  conn->recv_callback = recv_callback;
+  p_conn->recv_callback = recv_callback;
 }
 
 
@@ -1969,10 +2140,10 @@ Telnet_espconn_regist_recvcb(Telnet_Definition_t *conn
  *--------------------------------------------------------------------------------------------------
  */
 void
-Telnet_espconn_regist_connectcb(Telnet_Definition_t *conn
-		, espconn_connect_callback connect_callback)
+Telnet_espconn_regist_connectcb(Entry_Telnet_Definition_t* p_conn,
+	espconn_connect_callback connect_callback)
 {
- conn->proto.tcp->connect_callback = connect_callback;
+  p_conn->proto.tcp->connect_callback = connect_callback;
 }
 
 
@@ -1986,10 +2157,10 @@ Telnet_espconn_regist_connectcb(Telnet_Definition_t *conn
  *--------------------------------------------------------------------------------------------------
  */
 void
-Telnet_espconn_regist_reconcb(Telnet_Definition_t *conn
-		, espconn_reconnect_callback reconnect_callback)
+Telnet_espconn_regist_reconcb(Entry_Telnet_Definition_t* p_conn,
+	espconn_reconnect_callback reconnect_callback)
 {
-  conn->proto.tcp->reconnect_callback = reconnect_callback;
+  p_conn->proto.tcp->reconnect_callback = reconnect_callback;
 }
 
 
@@ -2003,10 +2174,10 @@ Telnet_espconn_regist_reconcb(Telnet_Definition_t *conn
  *--------------------------------------------------------------------------------------------------
  */
 void
-Telnet_espconn_regist_disconcb(Telnet_Definition_t *conn
-		, espconn_connect_callback disconnect_callback)
+Telnet_espconn_regist_disconcb(Entry_Telnet_Definition_t* p_conn,
+	espconn_connect_callback disconnect_callback)
 {
- conn->proto.tcp->disconnect_callback = disconnect_callback;
+  p_conn->proto.tcp->disconnect_callback = disconnect_callback;
 }
 
 
@@ -2020,10 +2191,10 @@ Telnet_espconn_regist_disconcb(Telnet_Definition_t *conn
  *--------------------------------------------------------------------------------------------------
  */
 void
-Telnet_espconn_regist_sentcb(Telnet_Definition_t *conn
-		, espconn_sent_callback send_callback)
+Telnet_espconn_regist_sentcb(Entry_Telnet_Definition_t* p_conn,
+	espconn_sent_callback send_callback)
 {
-  conn->send_callback = send_callback;
+  p_conn->send_callback = send_callback;
 }
 
 
