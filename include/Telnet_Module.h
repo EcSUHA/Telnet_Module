@@ -71,7 +71,6 @@ typedef void (* espconn_sent_callback)(void *arg);
 
 
 
-
 /* Definitions for error constants. */
 #define ESPCONN_OK          0    /* No error, everything OK. */
 #define ESPCONN_MEM        -1    /* Out of memory error.     */
@@ -112,38 +111,38 @@ enum espconn_state {
 
 
 
-typedef struct _esp_tcp
-  {
+typedef struct _esp_tcp {
   int remote_port;
   int local_port;
   uint8_t local_ip[4];
   uint8_t remote_ip[4];
-  espconn_connect_callback connect_callback;
-  espconn_reconnect_callback reconnect_callback;
-  espconn_connect_callback disconnect_callback;
+  espconn_connect_callback	connect_callback;
+  espconn_reconnect_callback	reconnect_callback;
+  espconn_connect_callback	disconnect_callback;
 //  espconn_connect_callback write_finish_fn;
-  } esp_tcp;
+} esp_tcp;
 
-typedef struct _esp_udp
-  {
+
+
+typedef struct _esp_udp {
   int remote_port;
   int local_port;
   uint8_t local_ip[4];
   uint8_t remote_ip[4];
-  } esp_udp;
+} esp_udp;
 
 
-typedef struct _remot_info{
+typedef struct _remot_info {
 	enum espconn_state state;
 	int remote_port;
 	uint8_t remote_ip[4];
-}remot_info;
+} remot_info;
 
 
 
 
 
-enum espconn_option{
+enum espconn_option {
 	ESPCONN_START = 0x00,
 	ESPCONN_REUSEADDR = 0x01,
 	ESPCONN_NODELAY = 0x02,
@@ -152,7 +151,7 @@ enum espconn_option{
 	ESPCONN_END
 };
 
-enum espconn_level{
+enum espconn_level {
 	ESPCONN_KEEPIDLE,
 	ESPCONN_KEEPINTVL,
 	ESPCONN_KEEPCNT
@@ -173,12 +172,13 @@ enum {
 /*
  * Telnet Daemon Instance Configuration
  */
-typedef struct Telnet_DInstanceCfg_s
-  {
+typedef struct Telnet_DInstanceCfg_s {
+
   // Slot Control Register Bitfield, if a bit 1-32 is set, a slot 1-32 is in use!
   uint32_t SlotCtrlRegBF;
+
   // Pointer to BuildInURls set at init time.
-  } Telnet_DInstanceCfg_t;
+} Telnet_DInstanceCfg_t;
 
 
 
@@ -194,11 +194,10 @@ typedef struct Entry_Telnet_Definition_s {
 
   enum espconn_type type;		// type of the espconn (TCP, UDP)
   enum espconn_state state;		// current state of the espconn
-  union
-	{
+  union {
 	esp_tcp *tcp;			// connection details IP,Ports, ...
 	esp_udp *udp;
-	} proto;
+  } proto;
     
   espconn_recv_callback recv_callback;	// A callback function for event: receive-data
   espconn_sent_callback send_callback;	// a callback function for event: send-data

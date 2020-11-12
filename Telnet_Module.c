@@ -17,8 +17,10 @@
 
 #include "ProjectConfig.h"
 
-#if defined(ESP_PLATFORM)
+#if defined(ESP_PLATFORM)	// ESP_PLATFORM
 
+//#include <esp8266.h>
+//#include "Platform.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -29,30 +31,20 @@
 #include <esp_log.h>
 #include <esp_system.h>
 #include <esp_wifi.h>
-//#include <spiffs.h>
 
 #include "lwip/err.h"
 #include "lwip/arch.h"
 #include "lwip/api.h"
 #include "lwip/sockets.h"
-
-//#include "duktape_spiffs.h"
-//#include "esp32_specific.h"
-
-
-//#include <esp8266.h>
-//#include "Platform.h"
-
-
 #include "lwip/ip.h"
 
 #include <stdint.h>
 #include "esp_attr.h"
-#include "esp_deep_sleep.h"
+//#include "esp_deep_sleep.h"
 //#include "esp_err.h" bug mit assert
 #include "esp_event.h"
 #include "esp_event_loop.h"
-#include "esp_heap_alloc_caps.h"
+//#include "esp_heap_alloc_caps.h"
 #include "esp_intr.h"
 #include "esp_ipc.h"
 #include "esp_ssc.h"
@@ -65,7 +57,8 @@
 //#include "heap_alloc_caps.h"
 
 #include "sdkconfig.h"
-#else // LINUX_PLATFORM
+
+#else						// LINUX_PLATFORM
 
 #include <netinet/tcp.h>
 #include <sys/socket.h>
@@ -73,7 +66,7 @@
 #include <netinet/ip.h>
 #include <unistd.h>
 
-#endif // END PLATFORM
+#endif						// PLATFORM END
 
 
 
@@ -91,39 +84,32 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-//#include "scde_task.h"
-#include "logging.h"
-#include "SCDE_s.h"
-#include "SCDE_Main.h"
-//#include "SCDE.h"
 
+#include "logging.h"	// fliegt noch raus + LOG_TAG
+
+#include "SCDE_s.h"
 
 #include "libtelnet.h"
 #include "Telnet_Module.h"
+
+
+
+// -------------------------------------------------------------------------------------------------
+
+// set default build verbose - if no external override
+#ifndef Telnet_Module_DBG  
+#define Telnet_Module_DBG  5	// 5 is default
+#endif 
+
+// -------------------------------------------------------------------------------------------------
+
+
+
+
+
+
 
 LOG_TAG("Telnet_Module");
-
-
-
-
-/*
-#include <ProjectConfig.h>
-#include <esp8266.h>
-#include <Platform.h>
-
-#include "libtelnet.h"
-#include <SCDE_s.h>
-
-#include "Telnet_Module.h"
-
-//#include "SCDE_Main.h"
-
-
-#include "lwip/sockets.h"
-
-*/
-
-
 
 
 // Max send buffer len
@@ -146,14 +132,18 @@ LOG_TAG("Telnet_Module");
 
 
 
-// -------------------------------------------------------------------------------------------------
 
-// set default build verbose - if no external override
-#ifndef ESP32_Telnet_Module_DBG  
-#define ESP32_Telnet_Module_DBG  5	// 5 is default
-#endif 
 
-// -------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -193,9 +183,6 @@ ProvidedByModule_t Telnet_ProvidedByModule =   { // A-Z order
   ,NULL					// FnProvided
   ,sizeof(Entry_Telnet_Definition_t)	// Modul specific Size (Common_Definition_t + X)
 };
-
-
-
 
 
 
@@ -278,17 +265,35 @@ Telnet_LibtelnetEventHandler(telnet_t *thisTelnet,
 		telnet_event_t *event,
 		void *userData)
 {
+  // get the Telnet connection slot - stored as user data
+  Telnet_DConnSlotData_t* conn = (Telnet_DConnSlotData_t*) userData;
+
+  // get the Telnet definition from the conn-slot
+  Entry_Telnet_Definition_t* p_entry_telnet_definition = conn->conn;
+
+//---------------------------------------------------------------------------------------------------
+
+ #if Telnet_Module_DBG >= 7
+  SCDEFn_at_Telnet_M->Log3Fn(p_entry_telnet_definition->common.name,
+	p_entry_telnet_definition->common.nameLen,
+	7,
+	"Telnet_LibtelnetEventHandler (module '%.*s'), slot_no '%d', from "
+	"remote '%d.%d.%d.%d:%d' to local port '%d', got event: %s.",
+	p_entry_telnet_definition->common.module->provided->typeNameLen,
+	p_entry_telnet_definition->common.module->provided->typeName,
+	p_entry_telnet_definition->slot_no,
+	p_entry_telnet_definition->proto.tcp->remote_ip[0],
+	p_entry_telnet_definition->proto.tcp->remote_ip[1],
+	p_entry_telnet_definition->proto.tcp->remote_ip[2],
+	p_entry_telnet_definition->proto.tcp->remote_ip[3],
+	p_entry_telnet_definition->proto.tcp->remote_port,
+	p_entry_telnet_definition->proto.tcp->local_port,
+	eventToString(event->type));
+  #endif
+  
+//---------------------------------------------------------------------------------------------------
 
   int rc;
-
-  # if TELNETD_DBG >= 3
-  printf("|telnet event: %s>", eventToString(event->type));
-  #endif
-
-
-  LOGD("telnet event: %s", eventToString(event->type));
-
-  Telnet_DConnSlotData_t* conn = (Telnet_DConnSlotData_t*) userData;
 
   switch (event->type) {
 
@@ -321,13 +326,29 @@ Telnet_LibtelnetEventHandler(telnet_t *thisTelnet,
 		rc = Telnet_Send_To_Send_Buff(conn
 			,event->data.buffer
 			,event->data.size);
-
+			
+#if Telnet_Module_DBG >= 1
 		// report error
 		if (rc < 0) {
-
-			printf("free / err: %d", rc);
+			
+			SCDEFn_at_Telnet_M->Log3Fn(p_entry_telnet_definition->common.name,
+				p_entry_telnet_definition->common.nameLen,
+				1,
+				"Telnet_LibtelnetEventHandler (module '%.*s'), slot_no '%d', to "
+				"remote '%d.%d.%d.%d:%d' at local port '%d', sending data results in error: %d.",
+				p_entry_telnet_definition->common.module->provided->typeNameLen,
+				p_entry_telnet_definition->common.module->provided->typeName,
+				p_entry_telnet_definition->slot_no,
+				p_entry_telnet_definition->proto.tcp->remote_ip[0],
+				p_entry_telnet_definition->proto.tcp->remote_ip[1],
+				p_entry_telnet_definition->proto.tcp->remote_ip[2],
+				p_entry_telnet_definition->proto.tcp->remote_ip[3],
+				p_entry_telnet_definition->proto.tcp->remote_port,
+				p_entry_telnet_definition->proto.tcp->local_port,
+				rc);
 		}
-
+#endif
+  
 		break;
 
 // -----------------------------------------------------------------------
@@ -369,7 +390,8 @@ Telnet_LibtelnetEventHandler(telnet_t *thisTelnet,
 		}
 
 		// store header field data
-		p_conn->p_hdr_fld_value_buff = HTTPDStoreAddData(p_conn->p_hdr_fld_value_buff, (const uint8_t*) p_at, length);
+		p_conn->p_hdr_fld_value_buff = 
+			HTTPDStoreAddData(p_conn->p_hdr_fld_value_buff, (const uint8_t*) p_at, length);
 
 
 
@@ -574,31 +596,29 @@ while (*search != '\0') {
 
 
 // -----------------------------------------------------------------------
-/* TELNET_EV_SUBNEGOTIATION:
-   Triggered whenever a TELNET sub-negotiation has been received.
-   Sub-negotiations include the NAWS option for communicating
-   terminal size to a server, the NEW-ENVIRON and TTYPE options for
-   negotiating terminal features, and MUD-centric protocols such as
-   ZMP, MSSP, and MCCP2.
+/*  TELNET_EV_SUBNEGOTIATION:
+    Triggered whenever a TELNET sub-negotiation has been received.
+    Sub-negotiations include the NAWS option for communicating
+    terminal size to a server, the NEW-ENVIRON and TTYPE options for
+    negotiating terminal features, and MUD-centric protocols such as
+    ZMP, MSSP, and MCCP2.
 
-   The event->sub->telopt value is the option under sub-negotiation.
-   The remaining data (if any) is passed in event->sub.buffer and
-   event->sub.size.  Note that most subnegotiation commands can include
-   embedded NUL bytes in the subnegotiation data, and the data
-   event->sub.buffer is not NUL terminated, so always use the
-   event->sub.size value!
+    The event->sub->telopt value is the option under sub-negotiation.
+    The remaining data (if any) is passed in event->sub.buffer and
+    event->sub.size.  Note that most subnegotiation commands can include
+    embedded NUL bytes in the subnegotiation data, and the data
+    event->sub.buffer is not NUL terminated, so always use the
+    event->sub.size value!
 
-   The meaning and necessary processing for subnegotiations are
-   defined in various TELNET RFCs and other informal specifications.
-   A subnegotiation should never be sent unless the specific option
-   has been enabled through the use of the telnet negotiation
-   feature.*/
+    The meaning and necessary processing for subnegotiations are
+    defined in various TELNET RFCs and other informal specifications.
+    A subnegotiation should never be sent unless the specific option
+    has been enabled through the use of the telnet negotiation
+    feature.*/
 
 	case TELNET_EV_SUBNEGOTIATION:
 
 	break;
-
-
 
 // -----------------------------------------------------------------------
 /* TTYPE/ENVIRON/NEW-ENVIRON/MSSP/ZMP SUPPORT:
@@ -676,24 +696,37 @@ while (*search != '\0') {
    The event->error.msg field will contain a NUL terminated string
    explaining the error.*/
 
-
-
 // -----------------------------------------------------------------------
 /* TELNET_EV_ERROR:
-   Similar to the WARNING event, the ERROR event is sent whenever
-   something has gone wrong.  ERROR events are non-recoverable,
-   however, and the application should immediately close the
-   connection.  Whatever has happened is likely going only to result
-   in garbage from libtelnet.  This is most likely to happen when a
-   COMPRESS2 stream fails, but other problems can occur.
+ * Similar to the WARNING event, the ERROR event is sent whenever
+ * something has gone wrong.  ERROR events are non-recoverable,
+ * however, and the application should immediately close the
+ * connection.  Whatever has happened is likely going only to result
+ * in garbage from libtelnet.  This is most likely to happen when a
+ * COMPRESS2 stream fails, but other problems can occur.
+ *
+ * The event->error.msg field will contain a NUL terminated string
+ * explaining the error.
+ */
+	case TELNET_EV_ERROR:			
 
-   The event->error.msg field will contain a NUL terminated string
-   explaining the error.*/
-
-	case TELNET_EV_ERROR:
-
-		sprintf("TELNET error: %s"
-			,(char*) event->error.msg);
+#if Telnet_Module_DBG >= 1			
+		SCDEFn_at_Telnet_M->Log3Fn(p_entry_telnet_definition->common.name,
+			p_entry_telnet_definition->common.nameLen,
+			1,
+			"Telnet_LibtelnetEventHandler (module '%.*s'), slot_no '%d', to "
+			"remote '%d.%d.%d.%d:%d' at local port '%d', reports an error: %s.",
+			p_entry_telnet_definition->common.module->provided->typeNameLen,
+			p_entry_telnet_definition->common.module->provided->typeName,
+			p_entry_telnet_definition->slot_no,
+			p_entry_telnet_definition->proto.tcp->remote_ip[0],
+			p_entry_telnet_definition->proto.tcp->remote_ip[1],
+			p_entry_telnet_definition->proto.tcp->remote_ip[2],
+			p_entry_telnet_definition->proto.tcp->remote_ip[3],
+			p_entry_telnet_definition->proto.tcp->remote_port,
+			p_entry_telnet_definition->proto.tcp->local_port,
+			(char*) event->error.msg);
+#endif
 
 		break;
 
@@ -702,8 +735,7 @@ while (*search != '\0') {
 	default:
 
 		break;
-
-	}
+  }
 }
 
 
@@ -866,7 +898,7 @@ Telnet_Send_To_Send_Buff(Telnet_DConnSlotData_t* conn, const char* data, int len
   if (conn->send_buffer_write_pos + len <= MAX_SENDBUFF_LEN) {
 
 	// data fits, copy to 'send_buffer' ...
-	SCDE_memcpy_plus(conn->send_buffer + conn->send_buffer_write_pos, data, len);
+	memcpy(conn->send_buffer + conn->send_buffer_write_pos, data, len);
 	conn->send_buffer_write_pos += len;
 
 	// return free bytes in 'send_buffer'
@@ -882,7 +914,7 @@ Telnet_Send_To_Send_Buff(Telnet_DConnSlotData_t* conn, const char* data, int len
 	if (send_buffer_free) {
 
 		// copy to Send-Buffer
-		SCDE_memcpy_plus(conn->send_buffer + conn->send_buffer_write_pos, data, send_buffer_free);
+		memcpy(conn->send_buffer + conn->send_buffer_write_pos, data, send_buffer_free);
 
 		conn->send_buffer_write_pos += send_buffer_free;
 	}
@@ -910,7 +942,7 @@ Telnet_Send_To_Send_Buff(Telnet_DConnSlotData_t* conn, const char* data, int len
 	}
 
 	// add the rest of the new data to the Trailing Buffer and save
-	SCDE_memcpy_plus(new_trailing_buffer + conn->trailing_buffer_len, data + send_buffer_free, len - send_buffer_free);
+	memcpy(new_trailing_buffer + conn->trailing_buffer_len, data + send_buffer_free, len - send_buffer_free);
 
 	# if TELNETD_DBG >= 3
 	printf("|note: adding %d bytes to trailing_buffer>",
@@ -964,7 +996,7 @@ Telnet_TransmitSendBuff(Telnet_DConnSlotData_t* conn)
 	platform_conn->proto.tcp->remote_port,
 	platform_conn->proto.tcp->local_port,
 	conn->send_buffer_write_pos,
-	system_get_free_heap_size());
+	0);//system_get_free_heap_size());
   #endif
 
 //--------------------------------------------------------------------------------------------------
@@ -1036,7 +1068,7 @@ Telnet_SentCb(void* arg)
 	,conn->conn->proto.tcp->remote_ip[3]
 	,conn->conn->proto.tcp->remote_port
 	,conn->conn->proto.tcp->local_port
-	,system_get_free_heap_size());
+	,0);//system_get_free_heap_size());
   #endif
 
 // --------------------------------------------------------------------------------------------------
@@ -1094,7 +1126,7 @@ Telnet_RecvCb(void *arg, char *recvdata, unsigned short recvlen)
 	,platform_conn->proto.tcp->remote_port
 	,platform_conn->proto.tcp->local_port
 	,recvlen
-	,system_get_free_heap_size());
+	,0);//system_get_free_heap_size());
   #endif
 
 //---------------------------------------------------------------------------------------------------
@@ -1156,7 +1188,7 @@ Telnet_ReconCb(void *arg, int8_t error)
 	,platform_conn->proto.tcp->remote_port
 	,platform_conn->proto.tcp->local_port
 	,error
-	,system_get_free_heap_size());
+	,0);//system_get_free_heap_size());
 
   #endif
 
@@ -1209,7 +1241,7 @@ Telnet_DisconCb(void *arg)
 	,platform_conn->proto.tcp->remote_ip[3]
 	,platform_conn->proto.tcp->remote_port
 	,platform_conn->proto.tcp->local_port
-	,system_get_free_heap_size());
+	,0);//system_get_free_heap_size());
   #endif
 
 // ---------------------------------------------------------------------------------------------------
@@ -1263,7 +1295,7 @@ Telnet_ConnCb(void *arg)
 	,platform_conn->proto.tcp->remote_ip[3]
 	,platform_conn->proto.tcp->remote_port
 	,platform_conn->proto.tcp->local_port
-	,system_get_free_heap_size());
+	,0);//system_get_free_heap_size());
   #endif
 
 // --------------------------------------------------------------------------------------------------
@@ -1466,7 +1498,7 @@ Telnet_UndefineRaw(Entry_Telnet_Definition_t* Telnet_Definition)
  * --------------------------------------------------------------------------------------------------
  */
 strTextMultiple_t* 
-Telnet_Define(Common_Definition_t *Common_Definition)//, const char *Definition)
+Telnet_Define(Common_Definition_t *Common_Definition)
 {
   // for Fn response msg
   strTextMultiple_t *retMsg = NULL;
@@ -1475,13 +1507,22 @@ Telnet_Define(Common_Definition_t *Common_Definition)//, const char *Definition)
   Entry_Telnet_Definition_t* Telnet_Definition =
 		  (Entry_Telnet_Definition_t*) Common_Definition;
 
-  #if SCDEH_DBG >= 5
-  printf("\n|Telnet_Def, Def:%.*s>"
-	,(int) Telnet_Definition->common.definitionLen
+// -------------------------------------------------------------------------------------------------
+
+  #if Telnet_Module_DBG >= 5
+  SCDEFn_at_Telnet_M->Log3Fn(Common_Definition->name
+	,Common_Definition->nameLen
+	,5
+	,"DefineFn of Module '%.*s' is called to continue creation of Definition '%.*s' with args '%.*s'."
+	,Telnet_Definition->common.module->provided->typeNameLen
+	,Telnet_Definition->common.module->provided->typeName
+	,Telnet_Definition->common.nameLen
+	,Telnet_Definition->common.name
+	,Telnet_Definition->common.definitionLen
 	,Telnet_Definition->common.definition);
   #endif
 
-//---
+// ------------------------------------------------------------------------------------------------
 
   // alloc memory for the HTTPD-Instance-Configuration
   Telnet_Definition->Telnet_DInstanceCfg =
@@ -1491,7 +1532,7 @@ Telnet_Define(Common_Definition_t *Common_Definition)//, const char *Definition)
   memset(Telnet_Definition->Telnet_DInstanceCfg, 0, sizeof (Telnet_DInstanceCfg_t));
 
   //reset Slot Control Register Bitfield -> no connections yet!
-//Telnet_Definition->Telnet_DInstance->SlotCtrlRegBF = 0; cleared by memset ...
+//Telnet_Definition->Telnet_DInstance->SlotCtrlRegBF = 0; // its already cleared by memset ...
 
 // -------------------------------------------------------------------------------------------------
 
@@ -1499,7 +1540,7 @@ Telnet_Define(Common_Definition_t *Common_Definition)//, const char *Definition)
   Telnet_Definition->Telnet_CtrlRegA |= F_THIS_IS_SERVERSOCKET;
 
  // later from definition
-  int Port = 23;
+  int Port = 9999;
 
   // ???
   int opt = true;
@@ -1522,22 +1563,25 @@ Telnet_Define(Common_Definition_t *Common_Definition)//, const char *Definition)
   // Create socket for incoming connections
   do {
 
-	listenfd = socket(AF_INET , SOCK_STREAM , IPPROTO_TCP);
+	listenfd = socket(PF_INET , SOCK_STREAM , IPPROTO_TCP);
 
 	// socked created or error?
 	if (listenfd < 0) {
 
 		SCDEFn_at_Telnet_M->Log3Fn(Telnet_Definition->common.name
-				,Telnet_Definition->common.nameLen
-				,1
-				,"Telnet_Define ERROR: failed to create sock! retriing\n");
+			,Telnet_Definition->common.nameLen
+			,1
+			,"Telnet_Define ERROR: failed to create sock! retriing\n");
+
 #if defined(ESP_PLATFORM)
 		vTaskDelay(1000/portTICK_RATE_MS);
+#else
+		sleep(1); 
 #endif
 
-		}
+	}
 
-	} while(listenfd < 0);
+  } while(listenfd < 0);
 
 
   // set master socket to allow multiple connections , this is just a good habit, it will work without this
@@ -1545,12 +1589,11 @@ Telnet_Define(Common_Definition_t *Common_Definition)//, const char *Definition)
   if (ret < 0 ) {
 
 	SCDEFn_at_Telnet_M->Log3Fn(Telnet_Definition->common.name
-			,Telnet_Definition->common.nameLen
-			,1
-			,"Telnet_Define ERROR: 'setsockopt' failed! error:%d\n"
-			,ret);
-
-	}
+		,Telnet_Definition->common.nameLen
+		,1
+		,"Telnet_Define ERROR: 'setsockopt' failed! error:%d\n"
+		,ret);
+  }
 
   // bind the socket to the local port
   do {
@@ -1560,15 +1603,15 @@ Telnet_Define(Common_Definition_t *Common_Definition)//, const char *Definition)
 	if (ret != 0) {
 
 		SCDEFn_at_Telnet_M->Log3Fn(Telnet_Definition->common.name
-				,Telnet_Definition->common.nameLen
-				,1
-				,"Telnet_Define ERROR: 'bind' failed! retriing\n");
+			,Telnet_Definition->common.nameLen
+			,1
+			,"Telnet_Define ERROR: 'bind' failed! retriing\n");
 #if defined(ESP_PLATFORM)
 		vTaskDelay(1000/portTICK_RATE_MS);
 #endif
-		}
+	}
 
-	} while(ret != 0);
+  } while(ret != 0);
 
 
 //  # if TELNETD_DBG >= 3
@@ -1587,24 +1630,22 @@ Telnet_Define(Common_Definition_t *Common_Definition)//, const char *Definition)
 #define HTTPD_MAX_CONNECTIONS 10
 
   // listen to the local port
-  do	{
+  do {
 
 	ret = listen(listenfd, HTTPD_MAX_CONNECTIONS);
 
-	if (ret != 0)
-
-		{
+	if (ret != 0) {
 
 		SCDEFn_at_Telnet_M->Log3Fn(Telnet_Definition->common.name
-				,Telnet_Definition->common.nameLen
-				,1
-				,"Telnet_Define ERROR: 'listen' failed! retriing\n");
+			,Telnet_Definition->common.nameLen
+			,1
+			,"Telnet_Define ERROR: 'listen' failed! retriing\n");
 #if defined(ESP_PLATFORM)
 		vTaskDelay(1000/portTICK_RATE_MS);
 #endif
-		}
+	}
 
-	} while(ret != 0);
+  } while(ret != 0);
 
   // store FD to Definition. Will than be processed in global loop ...
   Telnet_Definition->common.fd = listenfd;
@@ -1623,10 +1664,10 @@ Telnet_Define(Common_Definition_t *Common_Definition)//, const char *Definition)
 	Telnet_ConnCb);
 
   SCDEFn_at_Telnet_M->Log3Fn(Telnet_Definition->common.name
-		  ,Telnet_Definition->common.nameLen
-		  ,1
-		  ,"Defined a Telnet at X.X.X.X:YYYY, FD is:%d\n"
-		  ,listenfd);
+	,Telnet_Definition->common.nameLen
+	,1
+	,"Defined a Telnet at X.X.X.X:YYYY, FD is:%d\n"
+	,listenfd);
 
   return retMsg;
 }
@@ -1755,10 +1796,14 @@ Telnet_Direct_Read(Entry_Definition_t* p_entry_definition)
  	int keep_interval = 5;	//5s
  	int keep_count = 3;	//retry times
 
- 	setsockopt (new_client_fd, SOL_SOCKET, SO_KEEPALIVE, (void *) &keep_alive, sizeof (keep_alive));
-  	setsockopt (new_client_fd, IPPROTO_TCP, TCP_KEEPIDLE, (void*) &keep_idle, sizeof (keep_idle));
-  	setsockopt (new_client_fd, IPPROTO_TCP, TCP_KEEPINTVL, (void *) &keep_interval, sizeof (keep_interval));
-  	setsockopt (new_client_fd, IPPROTO_TCP, TCP_KEEPCNT, (void *) &keep_count, sizeof (keep_count));
+ 	setsockopt (new_client_fd, SOL_SOCKET, SO_KEEPALIVE,
+		(void *) &keep_alive, sizeof (keep_alive));
+  	setsockopt (new_client_fd, IPPROTO_TCP, TCP_KEEPIDLE,
+		(void*) &keep_idle, sizeof (keep_idle));
+  	setsockopt (new_client_fd, IPPROTO_TCP, TCP_KEEPINTVL,
+		(void *) &keep_interval, sizeof (keep_interval));
+  	setsockopt (new_client_fd, IPPROTO_TCP, TCP_KEEPCNT,
+		(void *) &keep_count, sizeof (keep_count));
 			
  	// store clients FD to new WebIF Definition
  	p_new_entry_telnet_definition->common.fd = new_client_fd;
@@ -1844,7 +1889,8 @@ Telnet_Direct_Read(Entry_Definition_t* p_entry_definition)
 	#endif
 
  	// execute WebIF Connect Callback to init 			
-	Telnet_ConnCb(p_new_entry_telnet_definition);
+	p_entry_telnet_definition->proto.tcp->
+		connect_callback(p_new_entry_telnet_definition);
   }
 
 // --------------------------------------------------------------------------------------------------
@@ -1880,14 +1926,16 @@ Telnet_Direct_Read(Entry_Definition_t* p_entry_definition)
 	if ( recv_len > 0 ) {
 
 		// execute Received Callback
-		Telnet_RecvCb(p_entry_telnet_definition, recv_buffer, recv_len);
+		p_entry_telnet_definition->recv_callback(p_entry_telnet_definition,
+			recv_buffer, recv_len);
 	}
 
 	// or has remote closed the connection ?
 	else if ( recv_len == 0 ) {
 
 		// execute Disconnect Callback
-		Telnet_DisconCb(p_entry_telnet_definition);
+		p_entry_telnet_definition->proto.tcp
+			->disconnect_callback(p_entry_telnet_definition);
 
 		// undefinde this p_entry_telnet_definition
 		Telnet_UndefineRaw(p_entry_telnet_definition);
@@ -1897,7 +1945,8 @@ Telnet_Direct_Read(Entry_Definition_t* p_entry_definition)
 	else 	{
 
 		// execute Error Callback
-		Telnet_ReconCb(p_entry_telnet_definition, recv_len);
+		p_entry_telnet_definition->proto.tcp
+			->reconnect_callback(p_entry_telnet_definition, recv_len);
 
 		// undefinde this p_entry_telnet_definition
 		Telnet_UndefineRaw(p_entry_telnet_definition);
@@ -1956,7 +2005,8 @@ Telnet_Direct_Write (Entry_Definition_t* p_entry_definition)
  	 #endif
 
 	// execute Disconnect Callback
-	Telnet_DisconCb(p_entry_telnet_definition);
+	p_entry_telnet_definition->proto.tcp->
+		disconnect_callback(p_entry_telnet_definition);
 
 	// undefinde this Telnet_Definition
 	Telnet_UndefineRaw(p_entry_telnet_definition);
@@ -1980,7 +2030,7 @@ Telnet_Direct_Write (Entry_Definition_t* p_entry_definition)
  	 #endif
 
 	// execute Send_Cb Callback
-	Telnet_SentCb(p_entry_telnet_definition);
+	p_entry_telnet_definition->send_callback(p_entry_telnet_definition);
   }
 
   return 0;
