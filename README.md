@@ -1,7 +1,7 @@
 # Telnet_Module
 ## for SCDE (Smart Connected Device Engine) V2 only !
 
-* TeLNET -> Telnet access for SCDE! Used to write cmds or read msg from SCDE.
+* Telnet -> Telnet access for SCDE! Used to write cmds or read msg from SCDE.
 
 * Module -> intended for use with SCDE (Smart Connected Device Engine) only !
 
