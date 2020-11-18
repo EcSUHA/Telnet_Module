@@ -118,11 +118,6 @@ LOG_TAG("Telnet_Module");
 // -------------------------------------------------------------------------------------------------
 
 // ammount of debug information 0 = off 5 max?
-#ifndef TELNETD_DBG
-#define TELNETD_DBG 9
-#endif
-
-// ammount of debug information 0 = off 5 max?
 #ifndef SCDEH_DBG
 #define SCDEH_DBG 0
 #endif
@@ -316,7 +311,7 @@ Telnet_LibtelnetEventHandler(telnet_t *thisTelnet,
 
 	case TELNET_EV_SEND:
 
-		# if TELNETD_DBG >= 5
+		# if Telnet_Module_DBG  >= 8
  		 SCDEFn_at_Telnet_M->HexDumpOutFn ("\nTelnet req to send:",
 			(char *) event->data.buffer,
 			event->data.size);
@@ -327,7 +322,7 @@ Telnet_LibtelnetEventHandler(telnet_t *thisTelnet,
 			,event->data.buffer
 			,event->data.size);
 			
-#if Telnet_Module_DBG >= 1
+		#if Telnet_Module_DBG >= 1
 		// report error
 		if (rc < 0) {
 			
@@ -347,7 +342,7 @@ Telnet_LibtelnetEventHandler(telnet_t *thisTelnet,
 				p_entry_telnet_definition->proto.tcp->local_port,
 				rc);
 		}
-#endif
+		#endif
   
 		break;
 
@@ -369,98 +364,30 @@ Telnet_LibtelnetEventHandler(telnet_t *thisTelnet,
    checking for line terminators yourself!*/
 
 	case TELNET_EV_DATA:
-{
-		# if TELNETD_DBG >= 5
- 		 SCDEFn_at_Telnet_M->HexDumpOutFn ("\nTelnet received:"
+
+		# if Telnet_Module_DBG  >= 8
+		SCDEFn_at_Telnet_M->HexDumpOutFn ("\nTelnet received:"
 			,(char *) event->data.buffer
 			,event->data.size);
 		# endif
 
+		// remove '\r' + '\n' from received row
 
-/*
-		// check header field value for max allowed data length
-		if (p_conn->p_hdr_fld_value_buff == NULL) {
+		int i, j;
+		uint8_t *p_src = event->data.buffer;
+  
+		for ( i = 0, j = 0 ; i < event->data.size ; i++) {
+  
+			if (p_src[i] != '\r' && p_src[i] !='\n')
+				p_src[j++] = p_src[i];
+  		}
 
-			if ( length > MXTELNETLEN ) return 1; // error
-		}
+		event->data.size = j;
 
-		else {
-
-			if ( strlen (p_conn->p_hdr_fld_value_buff) + length > MXTELNETLEN ) return 1; // error
-		}
-
-		// store header field data
-		p_conn->p_hdr_fld_value_buff = 
-			HTTPDStoreAddData(p_conn->p_hdr_fld_value_buff, (const uint8_t*) p_at, length);
-
-
-
-
-
-
-
-
-
-
-//  0x0a (ASCII newline)
-//  0x0d (ASCII carriage return)
-//  CRLF (0x0d0a)
-
-
-while (*search != '\0') {
-    // Seach for a newline
-
-    if (*search == '\n') {
-        printf("\nnewline Found\n");
-        search++;
-    }
-
-    // Search for a CR or a CRLF 
-    if(*search == '\r') {
-        // OK, we found a CR, is it followed by a LF?
-        if(*(search + 1) == '\n') {
-            // Yes, it is, thus, it is a CRLF
-            printf("\nCRLF Found\n");
-            search += 2; // Note the 2! CRLF is 2 characters!
-        }
-        else {
-            // No, just a lonely CR, forever alone.
-            printf("\nCarriage return found\n");
-            search++;
-        }
-    }
-}
-
-*/
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-		// analyze, execute cmd and get retMsgMultiple from Fn
-/*use?		struct headRetMsgMultiple_s headRetMsgMultipleFromFn =
-			 SCDEFn_at_Telnet_M->AnalyzeCommandFn((uint8_t *) event->data.buffer,
-			(size_t) event->data.size);*/
-
-		// execute an received row
+		// now execute the received row
 		struct headRetMsgMultiple_s headRetMsgMultipleFromFn =
-			 SCDEFn_at_Telnet_M->AnalyzeCommandChainFn((uint8_t *) event->data.buffer,
-			(size_t) event->data.size);
+			SCDEFn_at_Telnet_M->AnalyzeCommandChainFn((uint8_t *) event->data.buffer,
+				(size_t) event->data.size);
 
 		// get the entries from retMsgMultiple till empty, if any
 		while (!STAILQ_EMPTY(&headRetMsgMultipleFromFn)) {
@@ -469,17 +396,13 @@ while (*search != '\0') {
 			strTextMultiple_t* retMsg =
 				STAILQ_FIRST(&headRetMsgMultipleFromFn);
 
-
-
-	#if TELNETD_DBG >= 8
-  	printf("Got retMsg element from acch '%.*s'",
-		retMsg->strTextLen,
-		retMsg->strText);
- 	 #endif
-
-
-
-			// contains a msg?
+/*			#if Telnet_Module_DBG  >= 8
+  			printf("Got retMsg element from acch '%.*s'",
+				retMsg->strTextLen,
+				retMsg->strText);
+ 	 		#endif
+*/
+			// this entry contains a msg? -> every entry should contain text !?!
 			if (retMsg->strTextLen) {
 
 				// and send it via telnet
@@ -502,10 +425,8 @@ while (*search != '\0') {
 			// and the strTextMultiple_t
 			free(retMsg);
 		}
-}
+
 		break;
-
-
 
 // -----------------------------------------------------------------------
 /* TELNET_EV_IAC:
@@ -521,8 +442,6 @@ while (*search != '\0') {
 	case TELNET_EV_IAC:
 
 	break;
-
-
 
 // -----------------------------------------------------------------------
 /* TELNET_EV_WILL:
@@ -557,8 +476,6 @@ while (*search != '\0') {
 
 	break;
 
-
-
 // -----------------------------------------------------------------------
 /* TELNET_EV_WONT:
    TELNET_EV_DONT:
@@ -592,8 +509,6 @@ while (*search != '\0') {
 	case TELNET_EV_DONT:
 
 	break;
-
-
 
 // -----------------------------------------------------------------------
 /*  TELNET_EV_SUBNEGOTIATION:
@@ -710,7 +625,7 @@ while (*search != '\0') {
  */
 	case TELNET_EV_ERROR:			
 
-#if Telnet_Module_DBG >= 1			
+		#if Telnet_Module_DBG >= 1			
 		SCDEFn_at_Telnet_M->Log3Fn(p_entry_telnet_definition->common.name,
 			p_entry_telnet_definition->common.nameLen,
 			1,
@@ -726,7 +641,7 @@ while (*search != '\0') {
 			p_entry_telnet_definition->proto.tcp->remote_port,
 			p_entry_telnet_definition->proto.tcp->local_port,
 			(char*) event->error.msg);
-#endif
+		#endif
 
 		break;
 
@@ -858,7 +773,7 @@ Telnet_RespToOpenConn(Telnet_DConnSlotData_t* conn)
 	// debug warning ->
 	else {
 
-		# if TELNETD_DBG >= 1
+		# if Telnet_Module_DBG  >= 1
 		printf("\nTelnet RespToOpenConn, can not send now, 'F_TXED_CALLBACK_PENDING' is set>");
 		#endif
 
@@ -944,7 +859,7 @@ Telnet_Send_To_Send_Buff(Telnet_DConnSlotData_t* conn, const char* data, int len
 	// add the rest of the new data to the Trailing Buffer and save
 	memcpy(new_trailing_buffer + conn->trailing_buffer_len, data + send_buffer_free, len - send_buffer_free);
 
-	# if TELNETD_DBG >= 3
+	# if Telnet_Module_DBG  >= 3
 	printf("|note: adding %d bytes to trailing_buffer>",
 		trailing_buffer_len);
 	#endif
@@ -980,7 +895,7 @@ Telnet_TransmitSendBuff(Telnet_DConnSlotData_t* conn)
 
 //---------------------------------------------------------------------------------------------------
 
- #if TELNETD_DBG >= 7
+ #if Telnet_Module_DBG  >= 7
   SCDEFn_at_Telnet_M->Log3Fn(platform_conn->common.name,
 	platform_conn->common.nameLen,
 	7,
@@ -1001,7 +916,7 @@ Telnet_TransmitSendBuff(Telnet_DConnSlotData_t* conn)
 
 //--------------------------------------------------------------------------------------------------
 
-  #if TELNETD_DBG >= 5
+  #if Telnet_Module_DBG  >= 5
   SCDEFn_at_Telnet_M->HexDumpOutFn ("\nTX-send_buffer",
 	conn->send_buffer,
 	conn->send_buffer_write_pos);
@@ -1016,7 +931,7 @@ Telnet_TransmitSendBuff(Telnet_DConnSlotData_t* conn)
   // show error on debug term...
    if (Result) {
 
-	# if TELNETD_DBG >= 1
+	# if Telnet_Module_DBG  >= 1
 	printf("\n|TX-Err:%d!>"
 		,Result);
 	# endif
@@ -1059,7 +974,7 @@ Telnet_SentCb(void* arg)
 
 //---------------------------------------------------------------------------------------------------
 
-  # if TELNETD_DBG >= 3
+  # if Telnet_Module_DBG  >= 3
   printf("\nTelnet SentCb, slot:%d, remote:%d.%d.%d.%d:%d, local port:%d, mem:%d>"
 	,conn->slot_no
 	,conn->conn->proto.tcp->remote_ip[0]
@@ -1073,7 +988,7 @@ Telnet_SentCb(void* arg)
 
 // --------------------------------------------------------------------------------------------------
 
-  # if TELNETD_DBG >= 1
+  # if Telnet_Module_DBG  >= 1
   if (! ( conn->ConnCtrlFlags & F_TXED_CALLBACK_PENDING ) ) {
 	printf("|Err! TXedCbFlag missing>");
   }
@@ -1116,7 +1031,7 @@ Telnet_RecvCb(void *arg, char *recvdata, unsigned short recvlen)
 
 //---------------------------------------------------------------------------------------------------
 
-  # if TELNETD_DBG >= 3
+  # if Telnet_Module_DBG  >= 3
   printf("\nTelnet RecvCb, slot %d, remote:%d.%d.%d.%d:%d,local port:%d, len:%d, mem:%d>"
 	,platform_conn->slot_no
 	,platform_conn->proto.tcp->remote_ip[0]
@@ -1131,7 +1046,7 @@ Telnet_RecvCb(void *arg, char *recvdata, unsigned short recvlen)
 
 //---------------------------------------------------------------------------------------------------
 
-  # if TELNETD_DBG >= 5
+  # if Telnet_Module_DBG  >= 5
   SCDEFn_at_Telnet_M->HexDumpOutFn ("RX-HEX", recvdata, recvlen);
   # endif
 
@@ -1178,7 +1093,7 @@ Telnet_ReconCb(void *arg, int8_t error)
   Telnet_DConnSlotData_t *conn
 	= platform_conn->reverse;
 
-  # if TELNETD_DBG >= 3
+  # if Telnet_Module_DBG  >= 3
   printf("\nTelnet ReconCb, slot %d, remote:%d.%d.%d.%d:%d,local port:%d, error:%d, mem:%d>"
 	,platform_conn->slot_no
 	,platform_conn->proto.tcp->remote_ip[0]
@@ -1232,7 +1147,7 @@ Telnet_DisconCb(void *arg)
 
 //---------------------------------------------------------------------------------------------------
 
- # if TELNETD_DBG >= 3
+ # if Telnet_Module_DBG  >= 3
   printf("\nTelnet DisconCb, slot %d, remote:%d.%d.%d.%d:%d, local port:%d, mem:%d>"
 	,platform_conn->slot_no
 	,platform_conn->proto.tcp->remote_ip[0]
@@ -1285,7 +1200,7 @@ Telnet_ConnCb(void *arg)
 
 // --------------------------------------------------------------------------------------------------
 
- # if TELNETD_DBG >= 3
+ # if Telnet_Module_DBG  >= 3
   printf("\nTelnet ConCb, gets slot %d of %d, from remote:%d.%d.%d.%d:%d to local port:%d, mem:%d>"
 	,platform_conn->slot_no
 	,MAX_SCDED_CONN
@@ -1393,7 +1308,7 @@ Telnet_ConnCb(void *arg)
 int
 Telnet_sent(Entry_Telnet_Definition_t* p_entry_telnet_definition, uint8_t* send_buffer, uint send_buffer_len)
 {
-  # if TELNETD_DBG >= 5
+  # if Telnet_Module_DBG  >= 5
   printf("\n|Telnet_Sent len:%d!>"
 	,send_buffer_len);
   # endif
@@ -1406,7 +1321,7 @@ Telnet_sent(Entry_Telnet_Definition_t* p_entry_telnet_definition, uint8_t* send_
   // an error occured ?
   if ( !( result >= 0 ) ) {
 
-	#if TELNETD_DBG >= 5
+	#if Telnet_Module_DBG  >= 5
 	printf("\n|Telnet_Send has error %d as result!>", result);
 	#endif
 
@@ -1614,7 +1529,7 @@ Telnet_Define(Common_Definition_t *Common_Definition)
   } while(ret != 0);
 
 
-//  # if TELNETD_DBG >= 3
+//  # if Telnet_Module_DBG  >= 3
  /* printf("|local at:%u.%u.%u.%u:%u,port:%u>"
 	,(uint8_t*) &server_addr.sin_addr.s_addr
 	,(uint8_t*) &server_addr.sin_addr.s_addr+1
@@ -1973,7 +1888,6 @@ Telnet_Direct_Read(Entry_Definition_t* p_entry_definition)
 int 
 Telnet_Direct_Write (Entry_Definition_t* p_entry_definition)
 {
-
   // make common ptr to modul specific ptr
   Entry_Telnet_Definition_t* p_entry_telnet_definition = 
 	(Entry_Telnet_Definition_t*) p_entry_definition;
@@ -2083,7 +1997,7 @@ strTextMultiple_t*
 Telnet_Set(Common_Definition_t* Common_Definition
 	,uint8_t *setArgs
 	,size_t setArgsLen)
-  {
+{
 
   // for Fn response msg
   strTextMultiple_t *retMsg = NULL;
@@ -2113,8 +2027,7 @@ Telnet_Set(Common_Definition_t* Common_Definition
 	,setArgs);
 
   return retMsg;
-
-  }
+}
 
 
 
@@ -2128,7 +2041,7 @@ Telnet_Set(Common_Definition_t* Common_Definition
  */
 strTextMultiple_t*
 Telnet_Undefine(Common_Definition_t* Common_Definition)
-  {
+{
 
   // for Fn response msg
   strTextMultiple_t *retMsg = NULL;
@@ -2154,8 +2067,7 @@ Telnet_Undefine(Common_Definition_t* Common_Definition)
 	,Telnet_Definition->common.name);
 
   return retMsg;
-
-  }
+}
 
 
 
