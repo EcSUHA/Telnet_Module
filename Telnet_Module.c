@@ -87,7 +87,7 @@
 
 #include "logging.h"	// fliegt noch raus + LOG_TAG
 
-#include "SCDE_s.h"
+#include <SCDE_s.h>
 
 #include "libtelnet.h"
 #include "Telnet_Module.h"
